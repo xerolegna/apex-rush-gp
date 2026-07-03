@@ -35,19 +35,49 @@ function rand(a, b) { return a + Math.random() * (b - a); }
 const WORLD_W = 4200, WORLD_H = 3000;
 const ROAD_W = 132;
 
-const CTRL = [
-  [620, 520], [1800, 430], [2900, 490], [3620, 720],
-  [3760, 1300], [3420, 1760], [2820, 1620], [2420, 2020],
-  [2820, 2520], [2180, 2660], [1400, 2500], [900, 2620],
-  [500, 2300], [660, 1720], [420, 1100]
+// three circuits, all inside the same world
+const TRACKS = [
+  {
+    id: 'gp', name: 'APEX GP',
+    ctrl: [
+      [620, 520], [1800, 430], [2900, 490], [3620, 720],
+      [3760, 1300], [3420, 1760], [2820, 1620], [2420, 2020],
+      [2820, 2520], [2180, 2660], [1400, 2500], [900, 2620],
+      [500, 2300], [660, 1720], [420, 1100]
+    ]
+  },
+  {
+    id: 'oval', name: 'THUNDER OVAL',
+    ctrl: [
+      [800, 700], [2100, 520], [3400, 700], [3850, 1500],
+      [3400, 2300], [2100, 2480], [800, 2300], [350, 1500]
+    ]
+  },
+  {
+    id: 'hairpin', name: 'HAIRPIN HILLS',
+    ctrl: [
+      [500, 500], [1600, 650], [2600, 450], [3600, 600],
+      [3800, 1200], [3000, 1450], [3650, 1850], [2900, 2150],
+      [2100, 2550], [1100, 2400], [600, 2650], [420, 1900],
+      [820, 1450], [430, 950]
+    ]
+  }
 ];
 
-const SAMPLES = [];
-(function buildTrack() {
-  const n = CTRL.length, PER_SEG = 44;
+let curTrackIx = 0;
+let SAMPLES = [];
+let N_SAMPLES = 0;
+
+// timing markers along the lap (for gaps + delta bar)
+const MARKERS = 80;
+let MARKER_LEN = 1;
+
+function buildSamples(ctrl) {
+  const out = [];
+  const n = ctrl.length, PER_SEG = 44;
   for (let i = 0; i < n; i++) {
-    const p0 = CTRL[(i - 1 + n) % n], p1 = CTRL[i];
-    const p2 = CTRL[(i + 1) % n],     p3 = CTRL[(i + 2) % n];
+    const p0 = ctrl[(i - 1 + n) % n], p1 = ctrl[i];
+    const p2 = ctrl[(i + 1) % n],     p3 = ctrl[(i + 2) % n];
     for (let j = 0; j < PER_SEG; j++) {
       const t = j / PER_SEG, t2 = t * t, t3 = t2 * t;
       const x = 0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t +
@@ -56,22 +86,18 @@ const SAMPLES = [];
       const y = 0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t +
         (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
         (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
-      SAMPLES.push({ x, y, dir: 0, nx: 0, ny: 0 });
+      out.push({ x, y, dir: 0, nx: 0, ny: 0 });
     }
   }
-  const N = SAMPLES.length;
+  const N = out.length;
   for (let i = 0; i < N; i++) {
-    const a = SAMPLES[i], b = SAMPLES[(i + 1) % N];
+    const a = out[i], b = out[(i + 1) % N];
     a.dir = Math.atan2(b.y - a.y, b.x - a.x);
     a.nx = -Math.sin(a.dir);
     a.ny = Math.cos(a.dir);
   }
-})();
-const N_SAMPLES = SAMPLES.length;
-
-// timing markers along the lap (for gaps + delta bar)
-const MARKERS = 80;
-const MARKER_LEN = N_SAMPLES / MARKERS;
+  return out;
+}
 
 function nearestSample(x, y, hint) {
   let best = hint, bestD = Infinity;
@@ -92,8 +118,9 @@ function circDist(a, b) {
 const trackCanvas = document.createElement('canvas');
 trackCanvas.width = WORLD_W;
 trackCanvas.height = WORLD_H;
-(function renderTrack() {
+function renderTrackCanvas() {
   const g = trackCanvas.getContext('2d');
+  g.setLineDash([]);
 
   // flat pop-art magenta ground
   g.fillStyle = '#d16fd4';
@@ -181,7 +208,7 @@ trackCanvas.height = WORLD_H;
     g.fillStyle = 'rgba(255,255,255,0.20)';
     g.beginPath(); g.arc(x - r * 0.3, y - r * 0.3, r * 0.45, 0, TAU); g.fill();
   }
-})();
+}
 
 // ---------- Skid mark layer ----------
 const skidCanvas = document.createElement('canvas');
@@ -198,8 +225,10 @@ miniCanvas.width = MINI_W;
 miniCanvas.height = MINI_H;
 const MINI_SX = (MINI_W - 24) / WORLD_W;
 const MINI_SY = (MINI_H - 24) / WORLD_H;
-(function renderMini() {
+function renderMiniCanvas() {
   const g = miniCanvas.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, MINI_W, MINI_H);
   g.translate(12, 12);
   g.lineJoin = 'round';
   g.beginPath();
@@ -213,7 +242,25 @@ const MINI_SY = (MINI_H - 24) / WORLD_H;
   g.strokeStyle = '#8b8493';
   g.lineWidth = 5;
   g.stroke();
-})();
+}
+
+// swap the whole world over to another circuit
+function loadTrack(ix) {
+  curTrackIx = ix;
+  SAMPLES = buildSamples(TRACKS[ix].ctrl);
+  N_SAMPLES = SAMPLES.length;
+  MARKER_LEN = N_SAMPLES / MARKERS;
+  renderTrackCanvas();
+  renderMiniCanvas();
+  skidCtx.clearRect(0, 0, WORLD_W, WORLD_H);
+}
+
+function cycleTrack(d) {
+  loadTrack((curTrackIx + d + TRACKS.length) % TRACKS.length);
+  startRace();
+  state = 'menu';
+  beep(520, 0.08, 0.15);
+}
 
 // ---------- Print-grain overlay (static, like risograph paper) ----------
 const grainCanvas = document.createElement('canvas');
@@ -241,6 +288,9 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Enter') onEnter();
   if (e.key.toLowerCase() === 'r') startRace();
   if (e.key.toLowerCase() === 'm') toggleMute();
+  if (state === 'menu' && (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a')) cycleTrack(-1);
+  if (state === 'menu' && (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd')) cycleTrack(1);
+  if (e.key === 'Escape' && state !== 'menu') { startRace(); state = 'menu'; }
 });
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 window.addEventListener('pointerdown', () => { initAudio(); onEnter(); });
@@ -324,6 +374,23 @@ function gearOf(spd) {
   return { gear: 6, rpm: 1 };
 }
 
+// ---------- High scores (per track, kept in localStorage) ----------
+const memHS = {};   // fallback when storage is blocked (e.g. sandboxed iframe)
+function getHS() {
+  const id = TRACKS[curTrackIx].id;
+  try {
+    const v = JSON.parse(localStorage.getItem('apexgp_hs_' + id));
+    if (v) return v;
+  } catch (e) {}
+  return memHS[id] || {};
+}
+function saveHS(hs) {
+  const id = TRACKS[curTrackIx].id;
+  memHS[id] = hs;
+  try { localStorage.setItem('apexgp_hs_' + id, JSON.stringify(hs)); } catch (e) {}
+}
+let newLapRecord = false, newRaceRecord = false;
+
 // ---------- Cars ----------
 const TOTAL_LAPS = 3;
 const ORDINAL = ['1st', '2nd', '3rd', '4th'];
@@ -398,6 +465,8 @@ function startRace() {
   sectorLast = [null, null, null];
   sectorBest = [null, null, null];
   sectorFlash = [0, 0, 0];
+  newLapRecord = false;
+  newRaceRecord = false;
 }
 
 function onEnter() {
@@ -473,6 +542,15 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
           bestTrace = Float32Array.from(curTrace);
           deltaValid = true;
         }
+        if (car.isPlayer) {
+          const hs = getHS();
+          if (hs.bestLap === undefined || lapTime < hs.bestLap) {
+            hs.bestLap = lapTime;
+            saveHS(hs);
+            newLapRecord = true;
+            flashMsg = { text: 'TRACK RECORD  ' + fmtTime(lapTime), t: 2.4 };
+          }
+        }
         car.lapStart = raceClock;
         car.lap++;
         if (car.isPlayer) {
@@ -480,6 +558,12 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
             car.finishTime = raceClock;
             state = 'finished';
             beep(880, 0.5, 0.25);
+            const rhs = getHS();
+            if (rhs.bestRace === undefined || raceClock < rhs.bestRace) {
+              rhs.bestRace = raceClock;
+              saveHS(rhs);
+              newRaceRecord = true;
+            }
           } else if (car.lap === TOTAL_LAPS - 1) {
             beep(740, 0.25, 0.2);
             flashMsg = { text: 'FINAL LAP', t: 2 };
@@ -1179,21 +1263,42 @@ function drawMenu() {
 
   ctx.font = '600 20px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.fillText('3 laps  ·  live gaps  ·  sector splits  ·  slipstream', VW / 2, VH * 0.32 + 44);
+  ctx.fillText('3 laps  ·  3 circuits  ·  local track records', VW / 2, VH * 0.32 + 44);
+
+  // ---- track selector card ----
+  const cw = 470, ch = 176;
+  const cx = VW / 2 - cw / 2, cy = VH * 0.40;
+  panel(cx, cy, cw, ch);
+  ctx.textAlign = 'center';
+  ctx.font = '700 13px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(20,18,22,0.55)';
+  ctx.fillText('CHOOSE  TRACK   ' + (curTrackIx + 1) + ' / ' + TRACKS.length, VW / 2, cy + 26);
+  ctx.font = '900 32px Segoe UI, sans-serif';
+  ctx.fillStyle = '#141216';
+  ctx.fillText('◄   ' + TRACKS[curTrackIx].name + '   ►', VW / 2, cy + 66);
+  // records for this track (left) + layout preview (right)
+  const hs = getHS();
+  ctx.textAlign = 'left';
+  ctx.font = '700 15px Consolas, monospace';
+  ctx.fillStyle = '#2f6b26';
+  ctx.fillText('BEST LAP   ' + fmtTime(hs.bestLap), cx + 34, cy + 112);
+  ctx.fillStyle = 'rgba(20,18,22,0.75)';
+  ctx.fillText('BEST RACE  ' + fmtTime(hs.bestRace), cx + 34, cy + 140);
+  ctx.drawImage(miniCanvas, cx + cw - 152, cy + 86, 122, 87);
+  ctx.textAlign = 'center';
 
   const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 300);
   ctx.font = '800 26px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,217,77,' + pulse.toFixed(2) + ')';
-  ctx.fillText('PRESS  ENTER  TO  RACE', VW / 2, VH * 0.54);
+  ctx.fillText('PRESS  ENTER  TO  RACE', VW / 2, cy + ch + 62);
 
   ctx.font = '400 15px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.65)';
   const lines = [
-    'WASD / Arrows — drive        SPACE — handbrake',
-    'Tuck in behind a rival for a slipstream tow',
-    'R — restart        M — mute'
+    '◄ ► — choose track        WASD / Arrows — drive        SPACE — handbrake',
+    'R — restart        ESC — track select        M — mute'
   ];
-  lines.forEach((l, i) => ctx.fillText(l, VW / 2, VH * 0.64 + i * 26));
+  lines.forEach((l, i) => ctx.fillText(l, VW / 2, cy + ch + 100 + i * 26));
 }
 
 function drawResults() {
@@ -1221,10 +1326,19 @@ function drawResults() {
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.fillText('Total  ' + fmtTime(player.finishTime) + '        Best lap  ' + fmtTime(player.bestLap), VW / 2, VH * 0.24 + 100);
 
+  if (newRaceRecord || newLapRecord) {
+    const blink = Math.sin(performance.now() / 200) > -0.3;
+    if (blink) {
+      ctx.font = '800 24px Segoe UI, sans-serif';
+      ctx.fillStyle = '#f5b93a';
+      ctx.fillText(newRaceRecord ? '★  NEW TRACK RECORD  ★' : '★  NEW LAP RECORD  ★', VW / 2, VH * 0.24 + 134);
+    }
+  }
+
   // mini results table
   ctx.font = '600 17px Consolas, monospace';
   order.forEach((c, i) => {
-    const yy = VH * 0.24 + 150 + i * 30;
+    const yy = VH * 0.24 + 172 + i * 30;
     ctx.fillStyle = c.isPlayer ? '#f5b93a' : 'rgba(255,255,255,0.85)';
     const t = c.finishTime !== null ? fmtTime(c.finishTime) : 'DNF';
     ctx.fillText('P' + (i + 1) + '  ' + c.name.padEnd(8, ' ') + t, VW / 2, yy);
@@ -1234,6 +1348,9 @@ function drawResults() {
   ctx.font = '800 24px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,217,77,' + pulse.toFixed(2) + ')';
   ctx.fillText('PRESS  ENTER  TO  RACE  AGAIN', VW / 2, VH * 0.78);
+  ctx.font = '600 15px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText('ESC — choose another track', VW / 2, VH * 0.78 + 30);
 }
 
 // roundRect fallback for older browsers
@@ -1259,6 +1376,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+loadTrack(0);
 startRace();
 state = 'menu';
 requestAnimationFrame(frame);
