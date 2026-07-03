@@ -7,6 +7,7 @@ A smooth top-down racing game with an iRacing-style timing HUD. Pure HTML5 canva
 ## Features
 
 - 3 circuits — APEX GP, THUNDER OVAL, HAIRPIN HILLS — picked from the menu
+- 3 AI difficulty levels — ROOKIE, PRO, LEGEND (with rubber-banding for close racing)
 - Local track records (best lap + best race) saved per circuit
 - 3-lap races against 3 AI rivals with corner-aware braking
 - Drift physics with handbrake, tire marks, and smoke
@@ -23,6 +24,7 @@ A smooth top-down racing game with an iRacing-style timing HUD. Pure HTML5 canva
 |-----|--------|
 | WASD / Arrows | Drive |
 | ◄ ► (in menu) | Choose track |
+| ▲ ▼ (in menu) | AI difficulty |
 | Space | Handbrake (drift) |
 | Enter | Start / restart race |
 | R | Restart |

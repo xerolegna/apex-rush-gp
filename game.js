@@ -262,6 +262,27 @@ function cycleTrack(d) {
   beep(520, 0.08, 0.15);
 }
 
+// ---------- AI difficulty ----------
+// skills: pace multipliers for the three rivals
+// corner: how much curvature slows them (lower = braver in corners)
+// rubber: max rubber-band strength keeping the field close to the player
+const DIFFS = [
+  { id: 'rookie', name: 'ROOKIE', color: '#4e9b3f', skills: [0.90, 0.86, 0.82], corner: 0.50, rubber: 0 },
+  { id: 'pro',    name: 'PRO',    color: '#f5b93a', skills: [0.97, 0.94, 0.91], corner: 0.42, rubber: 0.035 },
+  { id: 'legend', name: 'LEGEND', color: '#e8542f', skills: [1.04, 1.00, 0.96], corner: 0.35, rubber: 0.055 }
+];
+let curDiffIx = 1;
+try {
+  const d = parseInt(localStorage.getItem('apexgp_diff'), 10);
+  if (d >= 0 && d < DIFFS.length) curDiffIx = d;
+} catch (e) {}
+
+function cycleDiff(d) {
+  curDiffIx = (curDiffIx + d + DIFFS.length) % DIFFS.length;
+  try { localStorage.setItem('apexgp_diff', String(curDiffIx)); } catch (e) {}
+  beep(640, 0.08, 0.15);
+}
+
 // ---------- Print-grain overlay (static, like risograph paper) ----------
 const grainCanvas = document.createElement('canvas');
 grainCanvas.width = 160;
@@ -290,6 +311,8 @@ window.addEventListener('keydown', e => {
   if (e.key.toLowerCase() === 'm') toggleMute();
   if (state === 'menu' && (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a')) cycleTrack(-1);
   if (state === 'menu' && (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd')) cycleTrack(1);
+  if (state === 'menu' && (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w')) cycleDiff(1);
+  if (state === 'menu' && (e.key === 'ArrowDown' || e.key.toLowerCase() === 's')) cycleDiff(-1);
   if (e.key === 'Escape' && state !== 'menu') { startRace(); state = 'menu'; }
 });
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
@@ -444,11 +467,12 @@ let sectorBest = [null, null, null];
 let sectorFlash = [0, 0, 0];   // seconds remaining of green highlight
 
 function startRace() {
+  const sk = DIFFS[curDiffIx].skills;
   cars = [
     makeCar('YOU',   '#f5b93a', '#c78d16', true, 0, 1),
-    makeCar('VIPER', '#e8542f', '#a83318', false, 1, 0.985),
-    makeCar('BOLT',  '#4e9b3f', '#2f6b26', false, 2, 0.955),
-    makeCar('GHOST', '#6f2da8', '#4a1c73', false, 3, 0.925)
+    makeCar('VIPER', '#e8542f', '#a83318', false, 1, sk[0]),
+    makeCar('BOLT',  '#4e9b3f', '#2f6b26', false, 2, sk[1]),
+    makeCar('GHOST', '#6f2da8', '#4a1c73', false, 3, sk[2])
   ];
   player = cars[0];
   skidCtx.clearRect(0, 0, WORLD_W, WORLD_H);
@@ -689,7 +713,14 @@ function driveAI(car, dt) {
   const a2 = SAMPLES[(car.idx + 52) % N_SAMPLES].dir;
   const curv = Math.abs(angleWrap(a2 - a1));
   if (Math.random() < 0.005) car.aiSpeedJitter = rand(0.96, 1.04);
-  const targetSpd = clamp(465 * car.skill * car.aiSpeedJitter * (1 - curv * 0.42), 130, 465);
+  const diffCfg = DIFFS[curDiffIx];
+  let pace = car.skill * car.aiSpeedJitter;
+  // rubber-band: trail the player -> push a little harder, lead -> ease off
+  if (diffCfg.rubber > 0 && car !== player) {
+    const gap = raceProgress(player) - raceProgress(car);
+    pace *= clamp(1 + (gap / N_SAMPLES) * 0.15, 1 - diffCfg.rubber, 1 + diffCfg.rubber);
+  }
+  const targetSpd = clamp(465 * pace * (1 - curv * diffCfg.corner), 130, 520);
 
   let throttle = 0, brake = 0;
   if (vFwd < targetSpd) throttle = 1;
@@ -1281,9 +1312,9 @@ function drawMenu() {
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.fillText('3 laps  ·  3 circuits  ·  local track records', VW / 2, VH * 0.32 + 44);
 
-  // ---- track selector card ----
-  const cw = 470, ch = 176;
-  const cx = VW / 2 - cw / 2, cy = VH * 0.40;
+  // ---- track + difficulty selector card ----
+  const cw = 470, ch = 216;
+  const cx = VW / 2 - cw / 2, cy = VH * 0.38;
   panel(cx, cy, cw, ch);
   ctx.textAlign = 'center';
   ctx.font = '700 13px Segoe UI, sans-serif';
@@ -1291,16 +1322,21 @@ function drawMenu() {
   ctx.fillText('CHOOSE  TRACK   ' + (curTrackIx + 1) + ' / ' + TRACKS.length, VW / 2, cy + 26);
   ctx.font = '900 32px Segoe UI, sans-serif';
   ctx.fillStyle = '#141216';
-  ctx.fillText('◄   ' + TRACKS[curTrackIx].name + '   ►', VW / 2, cy + 66);
+  ctx.fillText('◄   ' + TRACKS[curTrackIx].name + '   ►', VW / 2, cy + 64);
+  // AI difficulty row
+  const dcfg = DIFFS[curDiffIx];
+  ctx.font = '800 19px Segoe UI, sans-serif';
+  ctx.fillStyle = dcfg.color;
+  ctx.fillText('▲   AI:  ' + dcfg.name + '   ▼', VW / 2, cy + 100);
   // records for this track (left) + layout preview (right)
   const hs = getHS();
   ctx.textAlign = 'left';
   ctx.font = '700 15px Consolas, monospace';
   ctx.fillStyle = '#2f6b26';
-  ctx.fillText('BEST LAP   ' + fmtTime(hs.bestLap), cx + 34, cy + 112);
+  ctx.fillText('BEST LAP   ' + fmtTime(hs.bestLap), cx + 34, cy + 148);
   ctx.fillStyle = 'rgba(20,18,22,0.75)';
-  ctx.fillText('BEST RACE  ' + fmtTime(hs.bestRace), cx + 34, cy + 140);
-  ctx.drawImage(miniCanvas, cx + cw - 152, cy + 86, 122, 87);
+  ctx.fillText('BEST RACE  ' + fmtTime(hs.bestRace), cx + 34, cy + 176);
+  ctx.drawImage(miniCanvas, cx + cw - 152, cy + 120, 122, 87);
   ctx.textAlign = 'center';
 
   const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 300);
@@ -1311,7 +1347,7 @@ function drawMenu() {
   ctx.font = '400 15px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.65)';
   const lines = [
-    '◄ ► — choose track        WASD / Arrows — drive        SPACE — handbrake',
+    '◄ ► — track        ▲ ▼ — AI skill        WASD / Arrows — drive        SPACE — handbrake',
     'R — restart        ESC — track select        M — mute'
   ];
   lines.forEach((l, i) => ctx.fillText(l, VW / 2, cy + ch + 100 + i * 26));
