@@ -408,6 +408,7 @@ function makeCar(name, color, accent, isPlayer, gridSlot, skill) {
     vx: 0, vy: 0,
     steer: 0, throttleSm: 0,
     idx,
+    prevAlong: -back,
     cpNext: 1, lap: 0,
     lapStart: 0, bestLap: null, lastLap: null, finishTime: null,
     offTrack: false, drifting: false, draft: false,
@@ -513,7 +514,6 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
   car.x = clamp(car.x, 30, WORLD_W - 30);
   car.y = clamp(car.y, 30, WORLD_H - 30);
 
-  const prevIdx = car.idx;
   const near = nearestSample(car.x, car.y, car.idx);
   car.idx = near.idx;
   car.offTrack = near.dist > ROAD_W / 2 + 6;
@@ -524,12 +524,21 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
   car.rpm = gr.rpm;
 
   // checkpoints & laps
-  // mid-track checkpoints are loose (anti-cheat only), but the finish
-  // checkpoint fires exactly when the car wraps past sample 0 — i.e.
-  // the moment it actually crosses the checkered strip
+  // mid-track checkpoints are loose (anti-cheat only); the finish is a
+  // real geometric plane through the checkered strip — the lap fires the
+  // exact moment the car's position crosses it, immune to the nearest-
+  // sample index skipping across the final corner's apex
+  const s0 = SAMPLES[0];
+  const relX = car.x - s0.x, relY = car.y - s0.y;
+  const along = relX * Math.cos(s0.dir) + relY * Math.sin(s0.dir);
+  const across = -relX * Math.sin(s0.dir) + relY * Math.cos(s0.dir);
+  const crossedLine = car.prevAlong < 0 && along >= 0 &&
+    Math.abs(across) < ROAD_W / 2 + 30 && circDist(car.idx, 0) < 80;
+  car.prevAlong = along;
+
   const cpIdx = Math.floor(car.cpNext * N_SAMPLES / 4) % N_SAMPLES;
   const hitCp = car.cpNext === 0
-    ? (prevIdx > N_SAMPLES - 40 && car.idx < 40)
+    ? crossedLine
     : circDist(car.idx, cpIdx) < 30;
   if (hitCp) {
     car.cpNext++;
