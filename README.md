@@ -2,7 +2,7 @@
 
 A smooth top-down racing game with an iRacing-style timing HUD. Pure HTML5 canvas + vanilla JavaScript — no dependencies, no build step.
 
-**[▶ Play it here](https://claude.ai/code/artifact/0cbd29c4-f727-4961-aa6e-b912acc3eef9)** or just open `index.html` in a browser.
+**[▶ Play it here](https://xerolegna.github.io/apex-rush-gp/)** or just open `index.html` in a browser.
 
 ## Features
 
