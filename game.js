@@ -95,15 +95,13 @@ trackCanvas.height = WORLD_H;
 (function renderTrack() {
   const g = trackCanvas.getContext('2d');
 
-  const grad = g.createLinearGradient(0, 0, 0, WORLD_H);
-  grad.addColorStop(0, '#2f5e2a');
-  grad.addColorStop(1, '#28511f');
-  g.fillStyle = grad;
+  // flat pop-art magenta ground
+  g.fillStyle = '#d16fd4';
   g.fillRect(0, 0, WORLD_W, WORLD_H);
 
   for (let i = 0; i < 900; i++) {
     g.fillStyle = Math.random() < 0.5
-      ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.05)';
+      ? 'rgba(255,255,255,0.05)' : 'rgba(60,20,62,0.06)';
     const r = rand(18, 80);
     g.beginPath();
     g.ellipse(rand(0, WORLD_W), rand(0, WORLD_H), r, r * 0.6, rand(0, TAU), 0, TAU);
@@ -118,41 +116,34 @@ trackCanvas.height = WORLD_H;
   g.lineJoin = 'round';
   g.lineCap = 'round';
 
-  // curbs
-  g.strokeStyle = '#e8e6e0';
+  // thick ink outline, then comic yellow-and-black curbs
+  g.strokeStyle = '#141216';
+  g.lineWidth = ROAD_W + 36;
+  g.stroke(path);
+  g.strokeStyle = '#f5b93a';
   g.lineWidth = ROAD_W + 26;
   g.stroke(path);
-  g.strokeStyle = '#c8372d';
+  g.strokeStyle = '#141216';
   g.setLineDash([28, 28]);
   g.stroke(path);
   g.setLineDash([]);
 
-  // asphalt
-  g.strokeStyle = '#3a3d42';
+  // asphalt — flat cartoon grey
+  g.strokeStyle = '#8b8493';
   g.lineWidth = ROAD_W;
   g.stroke(path);
 
-  g.strokeStyle = 'rgba(0,0,0,0.18)';
-  g.lineWidth = ROAD_W - 40;
-  g.stroke(path);
-
   // white edge lines
-  g.strokeStyle = 'rgba(240,240,240,0.85)';
+  g.strokeStyle = '#f2efe9';
   g.lineWidth = ROAD_W - 10;
   g.stroke(path);
-  g.strokeStyle = '#3a3d42';
+  g.strokeStyle = '#8b8493';
   g.lineWidth = ROAD_W - 16;
-  g.stroke(path);
-  g.strokeStyle = 'rgba(0,0,0,0.15)';
-  g.lineWidth = ROAD_W - 44;
   g.stroke(path);
 
   // rubbered-in racing groove
-  g.strokeStyle = 'rgba(15,15,18,0.16)';
+  g.strokeStyle = 'rgba(20,18,22,0.10)';
   g.lineWidth = 46;
-  g.stroke(path);
-  g.strokeStyle = 'rgba(10,10,12,0.14)';
-  g.lineWidth = 24;
   g.stroke(path);
 
   // start / finish checkered strip
@@ -180,12 +171,15 @@ trackCanvas.height = WORLD_H;
     }
     if (Math.sqrt(minD) < ROAD_W / 2 + 90) continue;
     const r = rand(16, 34);
-    g.fillStyle = 'rgba(0,0,0,0.25)';
+    g.fillStyle = 'rgba(20,18,22,0.30)';
     g.beginPath(); g.ellipse(x + 6, y + 8, r, r * 0.8, 0, 0, TAU); g.fill();
-    g.fillStyle = i % 3 === 0 ? '#1d4419' : '#245722';
+    g.fillStyle = i % 3 === 0 ? '#3f8a34' : '#4e9b3f';
     g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
-    g.fillStyle = 'rgba(255,255,255,0.10)';
-    g.beginPath(); g.arc(x - r * 0.3, y - r * 0.3, r * 0.55, 0, TAU); g.fill();
+    g.strokeStyle = '#141216';
+    g.lineWidth = 3;
+    g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.20)';
+    g.beginPath(); g.arc(x - r * 0.3, y - r * 0.3, r * 0.45, 0, TAU); g.fill();
   }
 })();
 
@@ -213,13 +207,29 @@ const MINI_SY = (MINI_H - 24) / WORLD_H;
   for (let i = 1; i < N_SAMPLES; i += 4)
     g.lineTo(SAMPLES[i].x * MINI_SX, SAMPLES[i].y * MINI_SY);
   g.closePath();
-  g.strokeStyle = 'rgba(0,0,0,0.7)';
+  g.strokeStyle = '#141216';
   g.lineWidth = 9;
   g.stroke();
-  g.strokeStyle = 'rgba(255,255,255,0.75)';
+  g.strokeStyle = '#8b8493';
   g.lineWidth = 5;
   g.stroke();
 })();
+
+// ---------- Print-grain overlay (static, like risograph paper) ----------
+const grainCanvas = document.createElement('canvas');
+grainCanvas.width = 160;
+grainCanvas.height = 160;
+(function renderGrain() {
+  const g = grainCanvas.getContext('2d');
+  const img = g.createImageData(160, 160);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.random() < 0.5 ? 0 : 255;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = Math.random() * 26;
+  }
+  g.putImageData(img, 0, 0);
+})();
+let grainPattern = null;
 
 // ---------- Input ----------
 const keys = {};
@@ -367,10 +377,10 @@ let sectorFlash = [0, 0, 0];   // seconds remaining of green highlight
 
 function startRace() {
   cars = [
-    makeCar('YOU',   '#22b8e6', '#0e7fa8', true, 0, 1),
-    makeCar('VIPER', '#e0483a', '#8f2018', false, 1, 0.985),
-    makeCar('BOLT',  '#e8a52c', '#9a6712', false, 2, 0.955),
-    makeCar('GHOST', '#9d6ae8', '#5e35a0', false, 3, 0.925)
+    makeCar('YOU',   '#f5b93a', '#c78d16', true, 0, 1),
+    makeCar('VIPER', '#e8542f', '#a83318', false, 1, 0.985),
+    makeCar('BOLT',  '#4e9b3f', '#2f6b26', false, 2, 0.955),
+    makeCar('GHOST', '#6f2da8', '#4a1c73', false, 3, 0.925)
   ];
   player = cars[0];
   skidCtx.clearRect(0, 0, WORLD_W, WORLD_H);
@@ -501,7 +511,7 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
     if (Math.random() < 0.7) spawnSmoke((rlx + rrx) / 2, (rly + rry) / 2, 'rgba(230,230,230,');
   }
   if (car.offTrack && spd > 60 && Math.random() < 0.5) {
-    spawnSmoke(car.x - c2 * 14, car.y - s2 * 14, 'rgba(120,160,90,');
+    spawnSmoke(car.x - c2 * 14, car.y - s2 * 14, 'rgba(228,150,230,');
   }
   car.prevRL = { x: rlx, y: rly };
   car.prevRR = { x: rrx, y: rry };
@@ -754,22 +764,19 @@ function drawCar(c) {
   ctx.translate(c.x, c.y);
   ctx.rotate(c.angle);
 
-  ctx.fillStyle = 'rgba(0,0,0,0.30)';
+  // hard offset comic shadow
+  ctx.fillStyle = 'rgba(20,18,22,0.35)';
   ctx.beginPath();
-  ctx.ellipse(2, 4, 19, 12, 0, 0, TAU);
+  ctx.ellipse(3, 5, 19, 12, 0, 0, TAU);
   ctx.fill();
 
-  ctx.fillStyle = '#17181a';
+  ctx.fillStyle = '#141216';
   ctx.fillRect(-14, -11, 9, 4.5);
   ctx.fillRect(-14, 6.5, 9, 4.5);
   ctx.fillRect(6, -11, 9, 4.5);
   ctx.fillRect(6, 6.5, 9, 4.5);
 
-  const grad = ctx.createLinearGradient(0, -9, 0, 9);
-  grad.addColorStop(0, c.color);
-  grad.addColorStop(0.5, '#ffffff22');
-  grad.addColorStop(0.5, c.color);
-  grad.addColorStop(1, c.accent);
+  // flat body with bold ink outline
   ctx.fillStyle = c.color;
   ctx.beginPath();
   ctx.moveTo(17, 0);
@@ -781,13 +788,11 @@ function drawCar(c) {
   ctx.lineTo(13, 8);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = grad;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = '#141216';
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  ctx.fillStyle = 'rgba(15,20,28,0.85)';
+  ctx.fillStyle = '#141216';
   ctx.beginPath();
   ctx.moveTo(8, -5);
   ctx.lineTo(-6, -6);
@@ -798,8 +803,11 @@ function drawCar(c) {
 
   ctx.fillStyle = c.accent;
   ctx.fillRect(-18, -8, 3, 16);
+  ctx.strokeStyle = '#141216';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(-18, -8, 3, 16);
 
-  ctx.fillStyle = 'rgba(255,250,200,0.9)';
+  ctx.fillStyle = '#f2efe9';
   ctx.fillRect(14.5, -6.5, 2.5, 3);
   ctx.fillRect(14.5, 3.5, 2.5, 3);
 
@@ -808,7 +816,7 @@ function drawCar(c) {
 
 function draw() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  ctx.fillStyle = '#1c3a17';
+  ctx.fillStyle = '#b355b7';
   ctx.fillRect(0, 0, VW, VH);
 
   const shX = shake > 0 ? rand(-shake, shake) : 0;
@@ -842,15 +850,27 @@ function draw() {
   ctx.restore();
 
   drawHUD();
+
+  // print-grain over everything
+  if (!grainPattern) grainPattern = ctx.createPattern(grainCanvas, 'repeat');
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = grainPattern;
+  ctx.fillRect(0, 0, VW, VH);
 }
 
 function panel(x, y, w, h, r) {
-  ctx.fillStyle = 'rgba(8,11,15,0.72)';
+  const rad = r === undefined ? 10 : r;
+  // hard offset shadow, comic-sticker style
+  ctx.fillStyle = '#141216';
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r === undefined ? 8 : r);
+  ctx.roundRect(x + 4, y + 5, w, h, rad);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-  ctx.lineWidth = 1;
+  ctx.fillStyle = '#f2efe9';
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, rad);
+  ctx.fill();
+  ctx.strokeStyle = '#141216';
+  ctx.lineWidth = 3;
   ctx.stroke();
 }
 
@@ -870,16 +890,16 @@ function drawHUD() {
   panel(tbX, tbY, tbW, tbH);
   ctx.textAlign = 'center';
   ctx.font = '900 24px Segoe UI, sans-serif';
-  ctx.fillStyle = rank === 0 ? '#ffd94d' : '#ffffff';
+  ctx.fillStyle = rank === 0 ? '#e8542f' : '#141216';
   ctx.fillText('P' + (rank + 1), tbX + 48, tbY + 32);
   ctx.font = '700 20px Segoe UI, sans-serif';
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = '#141216';
   ctx.fillText('LAP ' + Math.min(player.lap + 1, TOTAL_LAPS) + '/' + TOTAL_LAPS, tbX + tbW / 2, tbY + 31);
   ctx.font = '600 16px Segoe UI, sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillStyle = 'rgba(20,18,22,0.75)';
   ctx.fillText(fmtTime(state === 'countdown' ? 0 : raceClock - player.lapStart), tbX + tbW - 62, tbY + 30);
   // separators
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.strokeStyle = 'rgba(20,18,22,0.18)';
   ctx.beginPath();
   ctx.moveTo(tbX + 96, tbY + 9); ctx.lineTo(tbX + 96, tbY + tbH - 9);
   ctx.moveTo(tbX + tbW - 118, tbY + 9); ctx.lineTo(tbX + tbW - 118, tbY + tbH - 9);
@@ -894,24 +914,24 @@ function drawHUD() {
     const half = dbW / 2 - 4;
     const w = Math.abs(d) / 2 * half;
     if (d < 0) {  // faster than best -> green, grows left
-      ctx.fillStyle = 'rgba(70,220,120,0.85)';
+      ctx.fillStyle = '#4e9b3f';
       ctx.fillRect(dbX + dbW / 2 - w, dbY + 4, w, dbH - 8);
     } else {
-      ctx.fillStyle = 'rgba(235,80,70,0.85)';
+      ctx.fillStyle = '#e8542f';
       ctx.fillRect(dbX + dbW / 2, dbY + 4, w, dbH - 8);
     }
     ctx.font = '700 13px Consolas, monospace';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#141216';
     ctx.fillText((deltaDisplay >= 0 ? '+' : '') + deltaDisplay.toFixed(2), dbX + dbW / 2, dbY + 17);
   } else {
     ctx.font = '600 12px Segoe UI, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillStyle = 'rgba(20,18,22,0.45)';
     ctx.fillText('DELTA  —  set a lap', dbX + dbW / 2, dbY + 16);
   }
   // center tick
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.strokeStyle = 'rgba(20,18,22,0.5)';
   ctx.beginPath();
   ctx.moveTo(dbX + dbW / 2, dbY + 3);
   ctx.lineTo(dbX + dbW / 2, dbY + dbH - 3);
@@ -924,29 +944,29 @@ function drawHUD() {
   panel(twX, twY, twW, twH);
   ctx.font = '700 13px Segoe UI, sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillStyle = 'rgba(20,18,22,0.55)';
   ctx.fillText('RACE  ·  ' + TOTAL_LAPS + ' LAPS', twX + 12, twY + 22);
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.strokeStyle = 'rgba(20,18,22,0.18)';
   ctx.beginPath();
   ctx.moveTo(twX + 8, twY + 30); ctx.lineTo(twX + twW - 8, twY + 30);
   ctx.stroke();
   order.forEach((c, i) => {
     const yy = twY + 38 + i * rowH;
     if (c.isPlayer) {
-      ctx.fillStyle = 'rgba(255,217,77,0.13)';
+      ctx.fillStyle = 'rgba(245,185,58,0.5)';
       ctx.fillRect(twX + 4, yy - 4, twW - 8, rowH - 2);
     }
     ctx.font = '800 14px Segoe UI, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillStyle = 'rgba(20,18,22,0.6)';
     ctx.fillText('P' + (i + 1), twX + 12, yy + 14);
     ctx.fillStyle = c.color;
     ctx.fillRect(twX + 40, yy + 3, 5, 14);
     ctx.font = '600 14px Segoe UI, sans-serif';
-    ctx.fillStyle = c.isPlayer ? '#ffd94d' : '#fff';
+    ctx.fillStyle = '#141216';
     ctx.fillText(c.name, twX + 53, yy + 14);
     ctx.font = '600 13px Consolas, monospace';
     ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.fillStyle = 'rgba(20,18,22,0.7)';
     const txt = c.finishTime !== null && leader.finishTime !== null
       ? (c === leader ? fmtTime(c.finishTime) : '+' + (c.finishTime - leader.finishTime).toFixed(1))
       : (c === leader ? 'LEADER' : gapToLeader(c, leader));
@@ -964,8 +984,8 @@ function drawHUD() {
     ctx.arc(mx + 12 + c.x * MINI_SX, my + 12 + c.y * MINI_SY, c.isPlayer ? 5 : 4, 0, TAU);
     ctx.fill();
     if (c.isPlayer) {
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#141216';
+      ctx.lineWidth = 2;
       ctx.stroke();
     }
   }
@@ -977,48 +997,59 @@ function drawHUD() {
   const spX = pad, spY = VH - spH - pad;
   panel(spX, spY, spW, spH);
   // gear box
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillStyle = 'rgba(20,18,22,0.08)';
   ctx.fillRect(spX + 14, spY + 16, 52, 58);
   ctx.font = '900 42px Segoe UI, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = player.rpm > 0.92 ? '#ff5a4d' : '#fff';
+  ctx.fillStyle = player.rpm > 0.92 ? '#e8542f' : '#141216';
   ctx.fillText(player.gear === 0 ? 'R' : String(player.gear), spX + 40, spY + 60);
   // speed
   ctx.textAlign = 'left';
   ctx.font = '900 40px Segoe UI, sans-serif';
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = '#141216';
   ctx.fillText(String(kmh), spX + 82, spY + 54);
   ctx.font = '600 13px Segoe UI, sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillStyle = 'rgba(20,18,22,0.55)';
   ctx.fillText('KM/H', spX + 84, spY + 72);
   // rpm bar + shift lights
   const rbX = spX + 14, rbY = spY + 84, rbW = spW - 28, rbH = 10;
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillStyle = 'rgba(20,18,22,0.18)';
   ctx.fillRect(rbX, rbY, rbW, rbH);
   const rf = player.rpm;
-  const rGrad = ctx.createLinearGradient(rbX, 0, rbX + rbW, 0);
-  rGrad.addColorStop(0, '#3ddc7a');
-  rGrad.addColorStop(0.6, '#e8d34a');
-  rGrad.addColorStop(1, '#ff4d3d');
-  ctx.fillStyle = rGrad;
-  ctx.fillRect(rbX, rbY, rbW * rf, rbH);
+  // flat comic rpm zones: green / yellow / red
+  ctx.fillStyle = '#4e9b3f';
+  ctx.fillRect(rbX, rbY, rbW * Math.min(rf, 0.6), rbH);
+  if (rf > 0.6) {
+    ctx.fillStyle = '#f5b93a';
+    ctx.fillRect(rbX + rbW * 0.6, rbY, rbW * (Math.min(rf, 0.85) - 0.6), rbH);
+  }
+  if (rf > 0.85) {
+    ctx.fillStyle = '#e8542f';
+    ctx.fillRect(rbX + rbW * 0.85, rbY, rbW * (rf - 0.85), rbH);
+  }
+  ctx.strokeStyle = '#141216';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(rbX, rbY, rbW, rbH);
   // shift lights
   for (let i = 0; i < 5; i++) {
     const on = rf > 0.58 + i * 0.085;
     ctx.fillStyle = on
-      ? (i < 3 ? '#3ddc7a' : '#ff4d3d')
-      : 'rgba(255,255,255,0.12)';
+      ? (i < 3 ? '#4e9b3f' : '#e8542f')
+      : 'rgba(20,18,22,0.18)';
     ctx.beginPath();
     ctx.arc(spX + spW - 78 + i * 15, spY + 24, 5, 0, TAU);
     ctx.fill();
+    ctx.strokeStyle = '#141216';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
   }
   // draft / drift indicators
   ctx.font = '800 12px Segoe UI, sans-serif';
   if (player.draft) {
-    ctx.fillStyle = '#7ee9ff';
+    ctx.fillStyle = '#6f2da8';
     ctx.fillText('DRAFT', spX + 82, spY + 26);
   } else if (player.drifting) {
-    ctx.fillStyle = '#ffd94d';
+    ctx.fillStyle = '#e8542f';
     ctx.fillText('DRIFT', spX + 82, spY + 26);
   }
 
@@ -1028,23 +1059,23 @@ function drawHUD() {
   panel(teX, teY, teW, teH);
   // brake + throttle vertical bars
   const barH2 = 62, barY2 = teY + 14;
-  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillStyle = 'rgba(20,18,22,0.12)';
   ctx.fillRect(teX + 34, barY2, 16, barH2);
   ctx.fillRect(teX + 100, barY2, 16, barH2);
-  ctx.fillStyle = '#e0483a';
+  ctx.fillStyle = '#e8542f';
   ctx.fillRect(teX + 34, barY2 + barH2 * (1 - dispBrake), 16, barH2 * dispBrake);
-  ctx.fillStyle = '#3ddc7a';
+  ctx.fillStyle = '#4e9b3f';
   ctx.fillRect(teX + 100, barY2 + barH2 * (1 - dispThrottle), 16, barH2 * dispThrottle);
   ctx.font = '600 11px Segoe UI, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillStyle = 'rgba(20,18,22,0.55)';
   ctx.fillText('BRK', teX + 42, barY2 + barH2 + 14);
   ctx.fillText('THR', teX + 108, barY2 + barH2 + 14);
   // steering indicator
   const stY = teY + teH - 12, stW = teW - 40;
-  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillStyle = 'rgba(20,18,22,0.12)';
   ctx.fillRect(teX + 20, stY - 4, stW, 6);
-  ctx.fillStyle = '#7ee9ff';
+  ctx.fillStyle = '#141216';
   const stPos = teX + 20 + stW / 2 + player.steer * (stW / 2 - 5);
   ctx.beginPath();
   ctx.arc(stPos, stY - 1, 6, 0, TAU);
@@ -1056,25 +1087,25 @@ function drawHUD() {
   panel(scX, scY, scW, scH);
   ctx.font = '700 12px Segoe UI, sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillStyle = 'rgba(20,18,22,0.55)';
   ctx.fillText('SECTORS', scX + 12, scY + 20);
   const boxW = (scW - 24 - 12) / 3;
   for (let i = 0; i < 3; i++) {
     const bx2 = scX + 12 + i * (boxW + 6), by2 = scY + 28;
     const hot = sectorFlash[i] > 0;
-    ctx.fillStyle = hot ? 'rgba(61,220,122,0.25)' : 'rgba(255,255,255,0.07)';
+    ctx.fillStyle = hot ? 'rgba(78,155,63,0.35)' : 'rgba(20,18,22,0.08)';
     ctx.fillRect(bx2, by2, boxW, 30);
     ctx.font = '600 10px Segoe UI, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = 'rgba(20,18,22,0.5)';
     ctx.fillText('S' + (i + 1), bx2 + 5, by2 + 12);
     ctx.font = '700 13px Consolas, monospace';
-    ctx.fillStyle = hot ? '#3ddc7a' : '#fff';
+    ctx.fillStyle = hot ? '#2f6b26' : '#141216';
     ctx.fillText(fmtSector(sectorLast[i]), bx2 + 5, by2 + 25);
   }
   ctx.font = '600 13px Consolas, monospace';
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillStyle = 'rgba(20,18,22,0.75)';
   ctx.fillText('LAST ' + fmtTime(player.lastLap), scX + 12, scY + 78);
-  ctx.fillStyle = '#7ee0a3';
+  ctx.fillStyle = '#2f6b26';
   ctx.fillText('BEST ' + fmtTime(player.bestLap), scX + 12, scY + 97);
 
   // ===== flash message =====
@@ -1083,9 +1114,13 @@ function drawHUD() {
     ctx.globalAlpha = a;
     ctx.font = '900 30px Segoe UI, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillText(flashMsg.text, VW / 2 + 2, VH * 0.3 + 2);
-    ctx.fillStyle = '#7ee0a3';
+    ctx.fillStyle = '#141216';
+    ctx.fillText(flashMsg.text, VW / 2 + 3, VH * 0.3 + 3);
+    ctx.strokeStyle = '#141216';
+    ctx.lineWidth = 6;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(flashMsg.text, VW / 2, VH * 0.3);
+    ctx.fillStyle = '#f5b93a';
     ctx.fillText(flashMsg.text, VW / 2, VH * 0.3);
     ctx.globalAlpha = 1;
   }
@@ -1101,9 +1136,13 @@ function drawHUD() {
     ctx.globalAlpha = clamp(fr * 2, 0, 1);
     ctx.font = '900 110px Segoe UI, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillText(txt, 4, 40 + 4);
-    ctx.fillStyle = whole >= 1 ? '#ffd94d' : '#7ee0a3';
+    ctx.fillStyle = '#141216';
+    ctx.fillText(txt, 7, 40 + 7);
+    ctx.strokeStyle = '#141216';
+    ctx.lineWidth = 12;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(txt, 0, 40);
+    ctx.fillStyle = whole >= 1 ? '#f5b93a' : '#4e9b3f';
     ctx.fillText(txt, 0, 40);
     ctx.restore();
   }
@@ -1111,7 +1150,11 @@ function drawHUD() {
     ctx.globalAlpha = 1 - raceClock;
     ctx.font = '900 110px Segoe UI, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#7ee0a3';
+    ctx.strokeStyle = '#141216';
+    ctx.lineWidth = 12;
+    ctx.lineJoin = 'round';
+    ctx.strokeText('GO!', VW / 2, VH / 2 + 40);
+    ctx.fillStyle = '#4e9b3f';
     ctx.fillText('GO!', VW / 2, VH / 2 + 40);
     ctx.globalAlpha = 1;
   }
@@ -1120,17 +1163,18 @@ function drawHUD() {
 }
 
 function drawMenu() {
-  ctx.fillStyle = 'rgba(5,8,12,0.55)';
+  ctx.fillStyle = 'rgba(70,22,72,0.40)';
   ctx.fillRect(0, 0, VW, VH);
   ctx.textAlign = 'center';
 
   ctx.font = '900 84px Segoe UI, sans-serif';
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillText('APEX RUSH GP', VW / 2 + 4, VH * 0.32 + 4);
-  const g = ctx.createLinearGradient(0, VH * 0.32 - 70, 0, VH * 0.32 + 10);
-  g.addColorStop(0, '#7ee9ff');
-  g.addColorStop(1, '#1f9fd8');
-  ctx.fillStyle = g;
+  ctx.fillStyle = '#141216';
+  ctx.fillText('APEX RUSH GP', VW / 2 + 6, VH * 0.32 + 6);
+  ctx.strokeStyle = '#141216';
+  ctx.lineWidth = 12;
+  ctx.lineJoin = 'round';
+  ctx.strokeText('APEX RUSH GP', VW / 2, VH * 0.32);
+  ctx.fillStyle = '#f5b93a';
   ctx.fillText('APEX RUSH GP', VW / 2, VH * 0.32);
 
   ctx.font = '600 20px Segoe UI, sans-serif';
@@ -1153,20 +1197,24 @@ function drawMenu() {
 }
 
 function drawResults() {
-  ctx.fillStyle = 'rgba(5,8,12,0.6)';
+  ctx.fillStyle = 'rgba(70,22,72,0.50)';
   ctx.fillRect(0, 0, VW, VH);
 
   const order = standings();
   const rank = order.indexOf(player);
   ctx.textAlign = 'center';
   ctx.font = '900 72px Segoe UI, sans-serif';
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillText('FINISH!', VW / 2 + 3, VH * 0.24 + 3);
-  ctx.fillStyle = rank === 0 ? '#ffd94d' : '#ffffff';
+  ctx.fillStyle = '#141216';
+  ctx.fillText('FINISH!', VW / 2 + 5, VH * 0.24 + 5);
+  ctx.strokeStyle = '#141216';
+  ctx.lineWidth = 10;
+  ctx.lineJoin = 'round';
+  ctx.strokeText('FINISH!', VW / 2, VH * 0.24);
+  ctx.fillStyle = rank === 0 ? '#f5b93a' : '#f2efe9';
   ctx.fillText('FINISH!', VW / 2, VH * 0.24);
 
   ctx.font = '800 34px Segoe UI, sans-serif';
-  ctx.fillStyle = rank === 0 ? '#7ee0a3' : '#e8a52c';
+  ctx.fillStyle = rank === 0 ? '#8fe08a' : '#f5b93a';
   ctx.fillText(rank === 0 ? 'YOU WIN — ' + ORDINAL[rank] + ' PLACE' : ORDINAL[rank] + ' PLACE', VW / 2, VH * 0.24 + 56);
 
   ctx.font = '500 20px Segoe UI, sans-serif';
@@ -1177,7 +1225,7 @@ function drawResults() {
   ctx.font = '600 17px Consolas, monospace';
   order.forEach((c, i) => {
     const yy = VH * 0.24 + 150 + i * 30;
-    ctx.fillStyle = c.isPlayer ? '#ffd94d' : 'rgba(255,255,255,0.85)';
+    ctx.fillStyle = c.isPlayer ? '#f5b93a' : 'rgba(255,255,255,0.85)';
     const t = c.finishTime !== null ? fmtTime(c.finishTime) : 'DNF';
     ctx.fillText('P' + (i + 1) + '  ' + c.name.padEnd(8, ' ') + t, VW / 2, yy);
   });
