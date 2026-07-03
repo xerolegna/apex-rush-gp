@@ -16,6 +16,7 @@ A smooth top-down racing game with an iRacing-style timing HUD. Pure HTML5 canva
 - 6-speed auto gearbox with RPM bar and shift lights
 - Synthesized engine and tire audio (Web Audio API)
 - Minimap, speed-aware camera, pedal/steering telemetry
+- Plays on phones: multi-touch on-screen controls and a compact mobile HUD
 - Top speed limited to 80 km/h — momentum matters
 
 ## Controls

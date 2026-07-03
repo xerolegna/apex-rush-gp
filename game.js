@@ -316,7 +316,72 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Escape' && state !== 'menu') { startRace(); state = 'menu'; }
 });
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
-window.addEventListener('pointerdown', () => { initAudio(); onEnter(); });
+window.addEventListener('pointerdown', e => {
+  initAudio();
+  if (e.pointerType === 'mouse') handleTap(e.clientX, e.clientY);
+});
+
+// ---------- Touch controls ----------
+const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+const touchCtl = { left: false, right: false, gas: false, brake: false, drift: false };
+let touchButtons = [];
+
+function updateTouchButtons(compact) {
+  const r = Math.max(32, Math.min(46, VW * 0.055));
+  const m = 12;
+  // on wide touchscreens lift the buttons above the bottom HUD panels
+  const by = compact ? VH - m - r : VH - 126 - m - r;
+  touchButtons = [
+    { id: 'left',  x: m + r,                  y: by, r },
+    { id: 'right', x: m + r * 3 + 18,         y: by, r },
+    { id: 'brake', x: VW - m - r * 3 - 18,    y: by, r },
+    { id: 'gas',   x: VW - m - r,             y: by, r },
+    { id: 'drift', x: VW - m - r,             y: by - r * 2 - 18, r: r * 0.8 }
+  ];
+}
+
+function readTouches(e) {
+  for (const k in touchCtl) touchCtl[k] = false;
+  for (const t of e.touches) {
+    for (const b of touchButtons) {
+      const dx = t.clientX - b.x, dy = t.clientY - b.y;
+      if (dx * dx + dy * dy < (b.r + 16) * (b.r + 16)) touchCtl[b.id] = true;
+    }
+  }
+}
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  initAudio();
+  readTouches(e);
+  const t = e.changedTouches[0];
+  if (t) handleTap(t.clientX, t.clientY);
+}, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); readTouches(e); }, { passive: false });
+canvas.addEventListener('touchend', e => { e.preventDefault(); readTouches(e); }, { passive: false });
+canvas.addEventListener('touchcancel', e => { readTouches(e); });
+
+// taps drive the menus (mouse clicks and touches alike)
+let menuGeo = null;
+function handleTap(x, y) {
+  if (state === 'menu') {
+    const g = menuGeo;
+    if (g && x > g.cx && x < g.cx + g.cw && y > g.cy && y < g.cy + g.ch) {
+      const trackRowY = y > g.cy + 34 && y < g.cy + (g.compact ? 68 : 76);
+      const diffRowY = y > g.cy + (g.compact ? 68 : 76) && y < g.cy + (g.compact ? 100 : 112);
+      if (trackRowY) {
+        if (x < g.cx + g.cw * 0.4) return cycleTrack(-1);
+        if (x > g.cx + g.cw * 0.6) return cycleTrack(1);
+      }
+      if (diffRowY) return cycleDiff(1);
+      return;              // dead area of the card
+    }
+    onEnter();
+  } else if (state === 'finished') {
+    // small zone on the "choose another track" line goes back to the menu
+    if (Math.abs(y - (VH * 0.78 + 24)) < 28) { startRace(); state = 'menu'; return; }
+    onEnter();
+  }
+}
 
 // ---------- Audio ----------
 let AC = null, masterGain = null, muted = false;
@@ -833,11 +898,11 @@ function update(dt) {
 
   let up = 0, down = 0;
   if (state === 'racing') {
-    up = (keys['arrowup'] || keys['w']) ? 1 : 0;
-    down = (keys['arrowdown'] || keys['s']) ? 1 : 0;
-    const left = keys['arrowleft'] || keys['a'];
-    const right = keys['arrowright'] || keys['d'];
-    const hb = keys[' '];
+    up = (keys['arrowup'] || keys['w'] || touchCtl.gas) ? 1 : 0;
+    down = (keys['arrowdown'] || keys['s'] || touchCtl.brake) ? 1 : 0;
+    const left = keys['arrowleft'] || keys['a'] || touchCtl.left;
+    const right = keys['arrowright'] || keys['d'] || touchCtl.right;
+    const hb = keys[' '] || touchCtl.drift;
     const steer = (right ? 1 : 0) - (left ? 1 : 0);
     stepCar(player, dt, up, down, steer, !!hb);
   } else if (state === 'finished') {
@@ -1011,12 +1076,13 @@ function drawHUD() {
   if (state === 'menu') { drawMenu(); return; }
 
   const pad = 16;
+  const COMPACT = VW < 760 || VH < 560;
   const order = standings();
   const rank = order.indexOf(player);
   const leader = order[0];
 
   // ===== top-center session bar =====
-  const tbW = 380, tbH = 48;
+  const tbW = Math.min(380, VW - 16), tbH = 48;
   const tbX = VW / 2 - tbW / 2, tbY = pad;
   panel(tbX, tbY, tbW, tbH);
   ctx.textAlign = 'center';
@@ -1069,9 +1135,10 @@ function drawHUD() {
   ctx.stroke();
 
   // ===== left: position tower with gaps =====
-  const twW = 214, rowH = 30;
+  const twW = COMPACT ? 176 : 214, rowH = COMPACT ? 26 : 30;
   const twH = 38 + cars.length * rowH;
-  const twX = pad, twY = pad;
+  const twX = COMPACT ? 10 : pad;
+  const twY = COMPACT ? tbY + tbH + 44 : pad;   // below the delta bar on phones
   panel(twX, twY, twW, twH);
   ctx.font = '700 13px Segoe UI, sans-serif';
   ctx.textAlign = 'left';
@@ -1106,24 +1173,57 @@ function drawHUD() {
   });
 
   // ===== top-right: minimap =====
-  const mx = VW - MINI_W - pad, my = pad;
-  panel(mx, my, MINI_W, MINI_H);
-  ctx.drawImage(miniCanvas, mx, my);
-  for (const c of [...order].reverse()) {
-    ctx.fillStyle = c.color;
-    ctx.beginPath();
-    ctx.arc(mx + 12 + c.x * MINI_SX, my + 12 + c.y * MINI_SY, c.isPlayer ? 5 : 4, 0, TAU);
-    ctx.fill();
-    if (c.isPlayer) {
-      ctx.strokeStyle = '#141216';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+  if (!COMPACT) {
+    const mx = VW - MINI_W - pad, my = pad;
+    panel(mx, my, MINI_W, MINI_H);
+    ctx.drawImage(miniCanvas, mx, my);
+    for (const c of [...order].reverse()) {
+      ctx.fillStyle = c.color;
+      ctx.beginPath();
+      ctx.arc(mx + 12 + c.x * MINI_SX, my + 12 + c.y * MINI_SY, c.isPlayer ? 5 : 4, 0, TAU);
+      ctx.fill();
+      if (c.isPlayer) {
+        ctx.strokeStyle = '#141216';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
     }
   }
 
-  // ===== bottom-left: speed / gear / rpm =====
   const spd = Math.hypot(player.vx, player.vy);
   const kmh = Math.round(spd * 0.16);
+
+  if (COMPACT) {
+    // ===== compact: small speed/gear cluster top-right =====
+    const spW = 148, spH = 88;
+    const spX = VW - spW - 10, spY = twY;
+    panel(spX, spY, spW, spH);
+    ctx.textAlign = 'left';
+    ctx.font = '900 34px Segoe UI, sans-serif';
+    ctx.fillStyle = '#141216';
+    ctx.fillText(String(kmh), spX + 14, spY + 42);
+    ctx.font = '600 11px Segoe UI, sans-serif';
+    ctx.fillStyle = 'rgba(20,18,22,0.55)';
+    ctx.fillText('KM/H', spX + 14, spY + 58);
+    ctx.font = '900 30px Segoe UI, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = player.rpm > 0.92 ? '#e8542f' : '#141216';
+    ctx.fillText(player.gear === 0 ? 'R' : String(player.gear), spX + spW - 16, spY + 42);
+    ctx.textAlign = 'left';
+    const rbX = spX + 14, rbY = spY + 66, rbW = spW - 28, rbH = 8;
+    ctx.fillStyle = 'rgba(20,18,22,0.12)';
+    ctx.fillRect(rbX, rbY, rbW, rbH);
+    const rfc = player.rpm;
+    ctx.fillStyle = rfc > 0.85 ? '#e8542f' : rfc > 0.6 ? '#f5b93a' : '#4e9b3f';
+    ctx.fillRect(rbX, rbY, rbW * rfc, rbH);
+    if (player.draft) {
+      ctx.font = '800 11px Segoe UI, sans-serif';
+      ctx.fillStyle = '#6f2da8';
+      ctx.fillText('DRAFT', spX + 60, spY + 22);
+    }
+  } else {
+
+  // ===== bottom-left: speed / gear / rpm =====
   const spW = 240, spH = 110;
   const spX = pad, spY = VH - spH - pad;
   panel(spX, spY, spW, spH);
@@ -1238,6 +1338,13 @@ function drawHUD() {
   ctx.fillText('LAST ' + fmtTime(player.lastLap), scX + 12, scY + 78);
   ctx.fillStyle = '#2f6b26';
   ctx.fillText('BEST ' + fmtTime(player.bestLap), scX + 12, scY + 97);
+  }  // end !COMPACT bottom panels
+
+  // ===== on-screen touch controls =====
+  if (IS_TOUCH && (state === 'racing' || state === 'countdown')) {
+    updateTouchButtons(COMPACT);
+    drawTouchControls();
+  }
 
   // ===== flash message =====
   if (flashMsg) {
@@ -1265,7 +1372,7 @@ function drawHUD() {
     ctx.translate(VW / 2, VH / 2);
     ctx.scale(1 + (1 - fr) * 0.4, 1 + (1 - fr) * 0.4);
     ctx.globalAlpha = clamp(fr * 2, 0, 1);
-    ctx.font = '900 110px Segoe UI, sans-serif';
+    ctx.font = '900 ' + Math.round(Math.min(110, VW * 0.22)) + 'px Segoe UI, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#141216';
     ctx.fillText(txt, 7, 40 + 7);
@@ -1279,7 +1386,7 @@ function drawHUD() {
   }
   if (state === 'racing' && raceClock < 1) {
     ctx.globalAlpha = 1 - raceClock;
-    ctx.font = '900 110px Segoe UI, sans-serif';
+    ctx.font = '900 ' + Math.round(Math.min(110, VW * 0.22)) + 'px Segoe UI, sans-serif';
     ctx.textAlign = 'center';
     ctx.strokeStyle = '#141216';
     ctx.lineWidth = 12;
@@ -1293,64 +1400,107 @@ function drawHUD() {
   if (state === 'finished') drawResults();
 }
 
+function drawTouchControls() {
+  for (const b of touchButtons) {
+    const pressed = touchCtl[b.id];
+    ctx.fillStyle = 'rgba(20,18,22,0.85)';
+    ctx.beginPath(); ctx.arc(b.x + 3, b.y + 4, b.r, 0, TAU); ctx.fill();
+    ctx.fillStyle = pressed ? '#f5b93a' : 'rgba(242,239,233,0.90)';
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#141216';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = '#141216';
+    ctx.textAlign = 'center';
+    if (b.id === 'left' || b.id === 'right') {
+      ctx.font = '900 ' + Math.round(b.r * 0.8) + 'px Segoe UI, sans-serif';
+      ctx.fillText(b.id === 'left' ? '◄' : '►', b.x, b.y + b.r * 0.28);
+    } else {
+      ctx.font = '900 ' + Math.round(b.r * 0.32) + 'px Segoe UI, sans-serif';
+      ctx.fillText(b.id.toUpperCase(), b.x, b.y + b.r * 0.12);
+    }
+  }
+}
+
 function drawMenu() {
   ctx.fillStyle = 'rgba(70,22,72,0.40)';
   ctx.fillRect(0, 0, VW, VH);
   ctx.textAlign = 'center';
 
-  ctx.font = '900 84px Segoe UI, sans-serif';
-  ctx.fillStyle = '#141216';
-  ctx.fillText('APEX RUSH GP', VW / 2 + 6, VH * 0.32 + 6);
-  ctx.strokeStyle = '#141216';
-  ctx.lineWidth = 12;
-  ctx.lineJoin = 'round';
-  ctx.strokeText('APEX RUSH GP', VW / 2, VH * 0.32);
-  ctx.fillStyle = '#f5b93a';
-  ctx.fillText('APEX RUSH GP', VW / 2, VH * 0.32);
+  const compact = VW < 760 || VH < 560;
+  const titleSize = Math.round(Math.min(84, VW * 0.115));
+  const titleY = compact ? Math.max(60, VH * 0.14) : VH * 0.32;
 
-  ctx.font = '600 20px Segoe UI, sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.fillText('3 laps  ·  3 circuits  ·  local track records', VW / 2, VH * 0.32 + 44);
+  ctx.font = '900 ' + titleSize + 'px Segoe UI, sans-serif';
+  ctx.fillStyle = '#141216';
+  ctx.fillText('APEX RUSH GP', VW / 2 + 6, titleY + 6);
+  ctx.strokeStyle = '#141216';
+  ctx.lineWidth = Math.max(6, titleSize * 0.14);
+  ctx.lineJoin = 'round';
+  ctx.strokeText('APEX RUSH GP', VW / 2, titleY);
+  ctx.fillStyle = '#f5b93a';
+  ctx.fillText('APEX RUSH GP', VW / 2, titleY);
+
+  if (!compact) {
+    ctx.font = '600 20px Segoe UI, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillText('3 laps  ·  3 circuits  ·  local track records', VW / 2, titleY + 44);
+  }
 
   // ---- track + difficulty selector card ----
-  const cw = 470, ch = 216;
-  const cx = VW / 2 - cw / 2, cy = VH * 0.38;
+  const cw = Math.min(470, VW - 24);
+  const ch = compact ? 162 : 216;
+  const cx = VW / 2 - cw / 2;
+  const cy = compact ? titleY + 34 : VH * 0.38;
+  menuGeo = { cx, cy, cw, ch, compact };
   panel(cx, cy, cw, ch);
   ctx.textAlign = 'center';
   ctx.font = '700 13px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(20,18,22,0.55)';
-  ctx.fillText('CHOOSE  TRACK   ' + (curTrackIx + 1) + ' / ' + TRACKS.length, VW / 2, cy + 26);
-  ctx.font = '900 32px Segoe UI, sans-serif';
+  ctx.fillText('CHOOSE  TRACK   ' + (curTrackIx + 1) + ' / ' + TRACKS.length, VW / 2, cy + 24);
+  ctx.font = '900 ' + (compact ? 23 : 32) + 'px Segoe UI, sans-serif';
   ctx.fillStyle = '#141216';
-  ctx.fillText('◄   ' + TRACKS[curTrackIx].name + '   ►', VW / 2, cy + 64);
+  ctx.fillText('◄   ' + TRACKS[curTrackIx].name + '   ►', VW / 2, cy + (compact ? 56 : 64));
   // AI difficulty row
   const dcfg = DIFFS[curDiffIx];
-  ctx.font = '800 19px Segoe UI, sans-serif';
+  ctx.font = '800 ' + (compact ? 17 : 19) + 'px Segoe UI, sans-serif';
   ctx.fillStyle = dcfg.color;
-  ctx.fillText('▲   AI:  ' + dcfg.name + '   ▼', VW / 2, cy + 100);
-  // records for this track (left) + layout preview (right)
+  ctx.fillText('▲   AI:  ' + dcfg.name + '   ▼', VW / 2, cy + (compact ? 88 : 100));
+  // records for this track
   const hs = getHS();
-  ctx.textAlign = 'left';
-  ctx.font = '700 15px Consolas, monospace';
-  ctx.fillStyle = '#2f6b26';
-  ctx.fillText('BEST LAP   ' + fmtTime(hs.bestLap), cx + 34, cy + 148);
-  ctx.fillStyle = 'rgba(20,18,22,0.75)';
-  ctx.fillText('BEST RACE  ' + fmtTime(hs.bestRace), cx + 34, cy + 176);
-  ctx.drawImage(miniCanvas, cx + cw - 152, cy + 120, 122, 87);
-  ctx.textAlign = 'center';
+  ctx.font = '700 ' + (compact ? 13 : 15) + 'px Consolas, monospace';
+  if (compact) {
+    ctx.fillStyle = '#2f6b26';
+    ctx.fillText('BEST LAP  ' + fmtTime(hs.bestLap), VW / 2, cy + 118);
+    ctx.fillStyle = 'rgba(20,18,22,0.75)';
+    ctx.fillText('BEST RACE ' + fmtTime(hs.bestRace), VW / 2, cy + 142);
+  } else {
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#2f6b26';
+    ctx.fillText('BEST LAP   ' + fmtTime(hs.bestLap), cx + 34, cy + 148);
+    ctx.fillStyle = 'rgba(20,18,22,0.75)';
+    ctx.fillText('BEST RACE  ' + fmtTime(hs.bestRace), cx + 34, cy + 176);
+    ctx.drawImage(miniCanvas, cx + cw - 152, cy + 120, 122, 87);
+    ctx.textAlign = 'center';
+  }
 
   const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 300);
-  ctx.font = '800 26px Segoe UI, sans-serif';
+  ctx.font = '800 ' + (compact ? 20 : 26) + 'px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,217,77,' + pulse.toFixed(2) + ')';
-  ctx.fillText('PRESS  ENTER  TO  RACE', VW / 2, cy + ch + 62);
+  ctx.fillText(IS_TOUCH ? 'TAP  HERE  TO  RACE' : 'PRESS  ENTER  TO  RACE', VW / 2, cy + ch + (compact ? 46 : 62));
 
-  ctx.font = '400 15px Segoe UI, sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.65)';
-  const lines = [
-    '◄ ► — track        ▲ ▼ — AI skill        WASD / Arrows — drive        SPACE — handbrake',
-    'R — restart        ESC — track select        M — mute'
-  ];
-  lines.forEach((l, i) => ctx.fillText(l, VW / 2, cy + ch + 100 + i * 26));
+  if (VH - (cy + ch) > 130) {
+    ctx.font = '400 ' + (compact ? 12 : 15) + 'px Segoe UI, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    const lines = IS_TOUCH ? [
+      'tap  ◄ ►  to change track   ·   tap the AI row for difficulty',
+      'on-screen pedals appear when the race starts'
+    ] : [
+      '◄ ► — track        ▲ ▼ — AI skill        WASD / Arrows — drive        SPACE — handbrake',
+      'R — restart        ESC — track select        M — mute'
+    ];
+    lines.forEach((l, i) => ctx.fillText(l, VW / 2, cy + ch + (compact ? 76 : 100) + i * 24));
+  }
 }
 
 function drawResults() {
@@ -1399,10 +1549,10 @@ function drawResults() {
   const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 300);
   ctx.font = '800 24px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,217,77,' + pulse.toFixed(2) + ')';
-  ctx.fillText('PRESS  ENTER  TO  RACE  AGAIN', VW / 2, VH * 0.78);
+  ctx.fillText(IS_TOUCH ? 'TAP  TO  RACE  AGAIN' : 'PRESS  ENTER  TO  RACE  AGAIN', VW / 2, VH * 0.78);
   ctx.font = '600 15px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.fillText('ESC — choose another track', VW / 2, VH * 0.78 + 30);
+  ctx.fillText(IS_TOUCH ? 'tap here to choose another track' : 'ESC — choose another track', VW / 2, VH * 0.78 + 30);
 }
 
 // roundRect fallback for older browsers

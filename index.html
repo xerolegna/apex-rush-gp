@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>APEX RUSH — Top-Down Racing</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,9 +13,12 @@
     font-family: 'Segoe UI', system-ui, sans-serif;
     user-select: none;
   }
+  html, body { overscroll-behavior: none; }
   #game {
     display: block;
     width: 100vw; height: 100vh;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
   }
   #vignette {
     position: fixed; inset: 0;
