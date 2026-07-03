@@ -513,6 +513,7 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
   car.x = clamp(car.x, 30, WORLD_W - 30);
   car.y = clamp(car.y, 30, WORLD_H - 30);
 
+  const prevIdx = car.idx;
   const near = nearestSample(car.x, car.y, car.idx);
   car.idx = near.idx;
   car.offTrack = near.dist > ROAD_W / 2 + 6;
@@ -523,8 +524,14 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
   car.rpm = gr.rpm;
 
   // checkpoints & laps
+  // mid-track checkpoints are loose (anti-cheat only), but the finish
+  // checkpoint fires exactly when the car wraps past sample 0 — i.e.
+  // the moment it actually crosses the checkered strip
   const cpIdx = Math.floor(car.cpNext * N_SAMPLES / 4) % N_SAMPLES;
-  if (circDist(car.idx, cpIdx) < 30) {
+  const hitCp = car.cpNext === 0
+    ? (prevIdx > N_SAMPLES - 40 && car.idx < 40)
+    : circDist(car.idx, cpIdx) < 30;
+  if (hitCp) {
     car.cpNext++;
     if (car.cpNext === 4) car.cpNext = 0;
     if (car.cpNext === 1 && state === 'racing') {
