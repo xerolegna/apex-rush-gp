@@ -266,10 +266,11 @@ function cycleTrack(d) {
 // skills: pace multipliers for the three rivals
 // corner: how much curvature slows them (lower = braver in corners)
 // rubber: max rubber-band strength keeping the field close to the player
+// mistake: chance per ~4-9s window that a rival briefly bobbles
 const DIFFS = [
-  { id: 'rookie', name: 'ROOKIE', color: '#4e9b3f', skills: [0.90, 0.86, 0.82], corner: 0.50, rubber: 0 },
-  { id: 'pro',    name: 'PRO',    color: '#f5b93a', skills: [0.97, 0.94, 0.91], corner: 0.42, rubber: 0.035 },
-  { id: 'legend', name: 'LEGEND', color: '#e8542f', skills: [1.04, 1.00, 0.96], corner: 0.35, rubber: 0.055 }
+  { id: 'rookie', name: 'ROOKIE', color: '#4e9b3f', skills: [0.92, 0.88, 0.85], corner: 0.46, rubber: 0,     mistake: 0.35 },
+  { id: 'pro',    name: 'PRO',    color: '#f5b93a', skills: [1.00, 0.97, 0.94], corner: 0.38, rubber: 0.035, mistake: 0.15 },
+  { id: 'legend', name: 'LEGEND', color: '#e8542f', skills: [1.06, 1.03, 1.00], corner: 0.30, rubber: 0.055, mistake: 0.04 }
 ];
 let curDiffIx = 1;
 try {
@@ -335,8 +336,7 @@ function updateTouchButtons(compact) {
     { id: 'left',  x: m + r,                  y: by, r },
     { id: 'right', x: m + r * 3 + 18,         y: by, r },
     { id: 'brake', x: VW - m - r * 3 - 18,    y: by, r },
-    { id: 'gas',   x: VW - m - r,             y: by, r },
-    { id: 'drift', x: VW - m - r,             y: by - r * 2 - 18, r: r * 0.8 }
+    { id: 'gas',   x: VW - m - r,             y: by, r }
   ];
 }
 
@@ -500,7 +500,8 @@ function makeCar(name, color, accent, isPlayer, gridSlot, skill) {
     cpNext: 1, lap: 0,
     lapStart: 0, bestLap: null, lastLap: null, finishTime: null,
     offTrack: false, drifting: false, draft: false,
-    laneOffset: isPlayer ? 0 : rand(-0.25, 0.25),
+    laneOffset: isPlayer ? 0 : rand(-0.18, 0.18),
+    mistakeT: 0, mistakeCd: rand(3, 8), mistakeSteer: 0,
     prevRL: null, prevRR: null,
     aiSpeedJitter: 1,
     // timing
@@ -764,32 +765,59 @@ function updateDraft() {
 
 // ---------- AI ----------
 function driveAI(car, dt) {
+  const diffCfg = DIFFS[curDiffIx];
   const vFwd = car.vx * Math.cos(car.angle) + car.vy * Math.sin(car.angle);
+
+  // stay on the tarmac: when running wide, aim back toward the centerline
+  const sN = SAMPLES[car.idx];
+  const latOff = (car.x - sN.x) * sN.nx + (car.y - sN.y) * sN.ny;
+  const wide = Math.abs(latOff) > ROAD_W / 2 - 28;
+  const laneTarget = wide ? -Math.sign(latOff) * 0.15 : car.laneOffset;
+
   const look = 14 + Math.abs(vFwd) * 0.05;
   const ti = (car.idx + Math.round(look)) % N_SAMPLES;
   const t = SAMPLES[ti];
-  const tx = t.x + t.nx * car.laneOffset * ROAD_W;
-  const ty = t.y + t.ny * car.laneOffset * ROAD_W;
+  const tx = t.x + t.nx * laneTarget * ROAD_W;
+  const ty = t.y + t.ny * laneTarget * ROAD_W;
   const want = Math.atan2(ty - car.y, tx - car.x);
   const diff = angleWrap(want - car.angle);
-  const steer = clamp(diff * 3.2, -1, 1);
+  let steer = clamp(diff * 3.4, -1, 1);
 
+  // curvature ahead -> corner speed target
   const a1 = SAMPLES[(car.idx + 14) % N_SAMPLES].dir;
   const a2 = SAMPLES[(car.idx + 52) % N_SAMPLES].dir;
   const curv = Math.abs(angleWrap(a2 - a1));
-  if (Math.random() < 0.005) car.aiSpeedJitter = rand(0.96, 1.04);
-  const diffCfg = DIFFS[curDiffIx];
+  if (Math.random() < 0.005) car.aiSpeedJitter = rand(0.97, 1.03);
   let pace = car.skill * car.aiSpeedJitter;
   // rubber-band: trail the player -> push a little harder, lead -> ease off
   if (diffCfg.rubber > 0 && car !== player) {
     const gap = raceProgress(player) - raceProgress(car);
     pace *= clamp(1 + (gap / N_SAMPLES) * 0.15, 1 - diffCfg.rubber, 1 + diffCfg.rubber);
   }
-  const targetSpd = clamp(465 * pace * (1 - curv * diffCfg.corner), 130, 520);
+  let targetSpd = clamp(465 * pace * (1 - curv * diffCfg.corner), 140, 520);
+
+  // never trade tarmac for time: slow down when pointing badly or wide
+  if (Math.abs(diff) > 0.5) targetSpd = Math.min(targetSpd, 260);
+  if (wide) targetSpd = Math.min(targetSpd, 300);
+
+  // scheduled human error: rookies bobble often, legends almost never
+  car.mistakeCd -= dt;
+  if (car.mistakeCd <= 0) {
+    car.mistakeCd = rand(4, 9);
+    if (Math.random() < diffCfg.mistake) {
+      car.mistakeT = rand(0.35, 0.7);
+      car.mistakeSteer = rand(-0.45, 0.45);
+    }
+  }
 
   let throttle = 0, brake = 0;
   if (vFwd < targetSpd) throttle = 1;
-  else if (vFwd > targetSpd + 25) brake = 0.8;
+  else if (vFwd > targetSpd + 15) brake = 1;
+  if (car.mistakeT > 0) {
+    car.mistakeT -= dt;
+    steer = clamp(steer + car.mistakeSteer, -1, 1);
+    throttle *= 0.45;
+  }
   stepCar(car, dt, throttle, brake, steer, false);
 }
 
@@ -1135,42 +1163,69 @@ function drawHUD() {
   ctx.stroke();
 
   // ===== left: position tower with gaps =====
-  const twW = COMPACT ? 176 : 214, rowH = COMPACT ? 26 : 30;
-  const twH = 38 + cars.length * rowH;
   const twX = COMPACT ? 10 : pad;
   const twY = COMPACT ? tbY + tbH + 44 : pad;   // below the delta bar on phones
-  panel(twX, twY, twW, twH);
-  ctx.font = '700 13px Segoe UI, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(20,18,22,0.55)';
-  ctx.fillText('RACE  ·  ' + TOTAL_LAPS + ' LAPS', twX + 12, twY + 22);
-  ctx.strokeStyle = 'rgba(20,18,22,0.18)';
-  ctx.beginPath();
-  ctx.moveTo(twX + 8, twY + 30); ctx.lineTo(twX + twW - 8, twY + 30);
-  ctx.stroke();
-  order.forEach((c, i) => {
-    const yy = twY + 38 + i * rowH;
-    if (c.isPlayer) {
-      ctx.fillStyle = 'rgba(245,185,58,0.5)';
-      ctx.fillRect(twX + 4, yy - 4, twW - 8, rowH - 2);
-    }
-    ctx.font = '800 14px Segoe UI, sans-serif';
-    ctx.fillStyle = 'rgba(20,18,22,0.6)';
-    ctx.fillText('P' + (i + 1), twX + 12, yy + 14);
-    ctx.fillStyle = c.color;
-    ctx.fillRect(twX + 40, yy + 3, 5, 14);
-    ctx.font = '600 14px Segoe UI, sans-serif';
-    ctx.fillStyle = '#141216';
-    ctx.fillText(c.name, twX + 53, yy + 14);
-    ctx.font = '600 13px Consolas, monospace';
-    ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(20,18,22,0.7)';
-    const txt = c.finishTime !== null && leader.finishTime !== null
-      ? (c === leader ? fmtTime(c.finishTime) : '+' + (c.finishTime - leader.finishTime).toFixed(1))
-      : (c === leader ? 'LEADER' : gapToLeader(c, leader));
-    ctx.fillText(txt, twX + twW - 12, yy + 14);
+  if (COMPACT) {
+    // mini tower: rank, chip, short name, gap — small so the road stays visible
+    const twW = 118, rowH = 20;
+    panel(twX, twY, twW, 10 + cars.length * rowH);
+    order.forEach((c, i) => {
+      const yy = twY + 18 + i * rowH;
+      if (c.isPlayer) {
+        ctx.fillStyle = 'rgba(245,185,58,0.5)';
+        ctx.fillRect(twX + 3, yy - 12, twW - 6, rowH - 3);
+      }
+      ctx.textAlign = 'left';
+      ctx.font = '800 11px Segoe UI, sans-serif';
+      ctx.fillStyle = 'rgba(20,18,22,0.6)';
+      ctx.fillText(String(i + 1), twX + 8, yy);
+      ctx.fillStyle = c.color;
+      ctx.fillRect(twX + 17, yy - 9, 4, 10);
+      ctx.font = '700 11px Segoe UI, sans-serif';
+      ctx.fillStyle = '#141216';
+      ctx.fillText(c.name.slice(0, 3), twX + 26, yy);
+      ctx.font = '600 10px Consolas, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(20,18,22,0.7)';
+      ctx.fillText(c === leader ? '' : gapToLeader(c, leader), twX + twW - 6, yy);
+      ctx.textAlign = 'left';
+    });
+  } else {
+    const twW = 214, rowH = 30;
+    const twH = 38 + cars.length * rowH;
+    panel(twX, twY, twW, twH);
+    ctx.font = '700 13px Segoe UI, sans-serif';
     ctx.textAlign = 'left';
-  });
+    ctx.fillStyle = 'rgba(20,18,22,0.55)';
+    ctx.fillText('RACE  ·  ' + TOTAL_LAPS + ' LAPS', twX + 12, twY + 22);
+    ctx.strokeStyle = 'rgba(20,18,22,0.18)';
+    ctx.beginPath();
+    ctx.moveTo(twX + 8, twY + 30); ctx.lineTo(twX + twW - 8, twY + 30);
+    ctx.stroke();
+    order.forEach((c, i) => {
+      const yy = twY + 38 + i * rowH;
+      if (c.isPlayer) {
+        ctx.fillStyle = 'rgba(245,185,58,0.5)';
+        ctx.fillRect(twX + 4, yy - 4, twW - 8, rowH - 2);
+      }
+      ctx.font = '800 14px Segoe UI, sans-serif';
+      ctx.fillStyle = 'rgba(20,18,22,0.6)';
+      ctx.fillText('P' + (i + 1), twX + 12, yy + 14);
+      ctx.fillStyle = c.color;
+      ctx.fillRect(twX + 40, yy + 3, 5, 14);
+      ctx.font = '600 14px Segoe UI, sans-serif';
+      ctx.fillStyle = '#141216';
+      ctx.fillText(c.name, twX + 53, yy + 14);
+      ctx.font = '600 13px Consolas, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(20,18,22,0.7)';
+      const txt = c.finishTime !== null && leader.finishTime !== null
+        ? (c === leader ? fmtTime(c.finishTime) : '+' + (c.finishTime - leader.finishTime).toFixed(1))
+        : (c === leader ? 'LEADER' : gapToLeader(c, leader));
+      ctx.fillText(txt, twX + twW - 12, yy + 14);
+      ctx.textAlign = 'left';
+    });
+  }
 
   // ===== top-right: minimap =====
   if (!COMPACT) {
