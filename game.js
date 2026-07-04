@@ -587,7 +587,7 @@ let grainPattern = null;
 // ---------- Input ----------
 const keys = {};
 window.addEventListener('keydown', e => {
-  if (saveOverlay) return;   // typing in the save-code dialog
+  if (saveOverlay || soundOverlay) return;   // a dialog owns the keyboard
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key))
     e.preventDefault();
   keys[e.key.toLowerCase()] = true;
@@ -597,6 +597,8 @@ window.addEventListener('keydown', e => {
   if (e.key.toLowerCase() === 'r') startRace();
   if (e.key.toLowerCase() === 'm') toggleMute();
   if (e.key.toLowerCase() === 'c' && state === 'menu') showSaveDialog();
+  if (e.key.toLowerCase() === 'g' && state === 'menu') toggleMode();
+  if (e.key.toLowerCase() === 'o' && state === 'menu') showSoundDialog();
   if (state === 'menu' && (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a')) cycleTrack(-1);
   if (state === 'menu' && (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd')) cycleTrack(1);
   if (state === 'menu' && (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w')) cycleDiff(1);
@@ -670,7 +672,7 @@ canvas.addEventListener('touchcancel', e => { readTouches(e); });
 // taps drive the menus (mouse clicks and touches alike)
 let menuGeo = null;
 function handleTap(x, y) {
-  if (saveOverlay) return;   // the dialog owns the screen
+  if (saveOverlay || soundOverlay) return;   // a dialog owns the screen
   if (state === 'welcome') return;
   if (state === 'racing' || state === 'countdown') {
     // on-screen menu button (phones)
@@ -684,8 +686,15 @@ function handleTap(x, y) {
     return;
   }
   if (state === 'menu') {
-    // save-code pill, bottom-left
-    if (x < 150 && y > VH - 58) { showSaveDialog(); return; }
+    // pill row: save / sound / mode
+    for (const p of menuPills) {
+      if (x >= p.x - 4 && x <= p.x + p.w + 6 && y >= p.y - 6 && y <= p.y + p.h + 8) {
+        if (p.id === 'save') showSaveDialog();
+        else if (p.id === 'sound') showSoundDialog();
+        else if (p.id === 'mode') toggleMode();
+        return;
+      }
+    }
     const g = menuGeo;
     if (g && x > g.cx && x < g.cx + g.cw && y > g.cy && y < g.cy + g.ch) {
       if (y < g.cy + 34) {          // header row -> full track map
@@ -732,8 +741,25 @@ function handleTap(x, y) {
 // ---------- Audio ----------
 let AC = null, masterGain = null, muted = false;
 let engineOsc = null, engineOsc2 = null, engineGain = null, engineFilter = null;
-let skidGain = null;
+let skidGain = null, sfxGain = null;
 let musicGain = null, musicDelay = null, noiseBuf = null;
+
+// user volume settings (0..1), persisted
+let musicVol = 1, sfxVol = 1;
+try {
+  const v = JSON.parse(localStorage.getItem('apexgp_vol'));
+  if (v) {
+    if (typeof v.m === 'number') musicVol = clamp(v.m, 0, 1);
+    if (typeof v.s === 'number') sfxVol = clamp(v.s, 0, 1);
+  }
+} catch (e) {}
+function saveVol() {
+  try { localStorage.setItem('apexgp_vol', JSON.stringify({ m: musicVol, s: sfxVol })); } catch (e) {}
+}
+function applyVolumes() {
+  if (musicGain) musicGain.gain.value = 0.24 * musicVol;
+  if (sfxGain) sfxGain.gain.value = sfxVol;
+}
 
 function initAudio() {
   if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
@@ -743,6 +769,10 @@ function initAudio() {
   masterGain = AC.createGain();
   masterGain.gain.value = 0.6;
   masterGain.connect(AC.destination);
+
+  // all non-music sound routes through sfxGain so the slider scales it
+  sfxGain = AC.createGain();
+  sfxGain.connect(masterGain);
 
   engineFilter = AC.createBiquadFilter();
   engineFilter.type = 'lowpass';
@@ -756,7 +786,7 @@ function initAudio() {
   engineOsc.connect(engineFilter);
   engineOsc2.connect(engineFilter);
   engineFilter.connect(engineGain);
-  engineGain.connect(masterGain);
+  engineGain.connect(sfxGain);
   engineOsc.start();
   engineOsc2.start();
 
@@ -775,7 +805,7 @@ function initAudio() {
   skidGain.gain.value = 0;
   noise.connect(bp);
   bp.connect(skidGain);
-  skidGain.connect(masterGain);
+  skidGain.connect(sfxGain);
   noise.start();
 
   // music bus: everything routes through musicGain, with a synced echo
@@ -790,6 +820,7 @@ function initAudio() {
   musicDelay.connect(fb);
   fb.connect(musicDelay);
   musicDelay.connect(musicGain);
+  applyVolumes();
 }
 
 // ---------- Procedural background music (original, no samples) ----------
@@ -899,7 +930,7 @@ function beep(freq, dur, vol) {
   o.frequency.value = freq;
   g.gain.setValueAtTime(vol, AC.currentTime);
   g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + dur);
-  o.connect(g); g.connect(masterGain);
+  o.connect(g); g.connect(sfxGain || masterGain);
   o.start();
   o.stop(AC.currentTime + dur);
 }
@@ -1044,6 +1075,53 @@ function showSaveDialog() {
   };
 }
 
+// DOM dialog: music / effects volume sliders
+let soundOverlay = null;
+function showSoundDialog() {
+  initAudio();
+  if (soundOverlay) { soundOverlay.remove(); soundOverlay = null; }
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(18,36,14,0.78);' +
+    'display:flex;align-items:center;justify-content:center;z-index:10;' +
+    "font-family:'Segoe UI',sans-serif;";
+  div.innerHTML =
+    '<div style="background:#f2efe9;border:3px solid #141216;border-radius:14px;' +
+    'box-shadow:6px 7px 0 #141216;max-width:380px;width:88%;padding:18px;color:#141216;">' +
+    '<div style="font-weight:900;font-size:20px;margin-bottom:14px;">🔊 SOUND</div>' +
+    '<label style="font-weight:700;font-size:14px;">🎵 Music &nbsp;<span id="apexMV"></span>%</label>' +
+    '<input id="apexMusicR" type="range" min="0" max="100" style="width:100%;margin:8px 0 18px;">' +
+    '<label style="font-weight:700;font-size:14px;">🏎️ Effects &nbsp;<span id="apexSV"></span>%</label>' +
+    '<input id="apexSfxR" type="range" min="0" max="100" style="width:100%;margin:8px 0 18px;">' +
+    '<button id="apexSndClose" style="width:100%;padding:10px;font-weight:800;' +
+    'background:#4e9b3f;color:#fff;border:2px solid #141216;border-radius:8px;cursor:pointer;">DONE</button>' +
+    '</div>';
+  document.body.appendChild(div);
+  soundOverlay = div;
+  const mr = div.querySelector('#apexMusicR'), sr2 = div.querySelector('#apexSfxR');
+  const mv = div.querySelector('#apexMV'), sv = div.querySelector('#apexSV');
+  mr.value = Math.round(musicVol * 100);
+  sr2.value = Math.round(sfxVol * 100);
+  mv.textContent = mr.value;
+  sv.textContent = sr2.value;
+  mr.oninput = () => {
+    musicVol = mr.value / 100;
+    mv.textContent = mr.value;
+    saveVol();
+    applyVolumes();
+  };
+  sr2.oninput = () => {
+    sfxVol = sr2.value / 100;
+    sv.textContent = sr2.value;
+    saveVol();
+    applyVolumes();
+    beep(660, 0.1, 0.2);
+  };
+  div.querySelector('#apexSndClose').onclick = () => {
+    div.remove();
+    soundOverlay = null;
+  };
+}
+
 // ---------- Cars ----------
 const TOTAL_LAPS = 3;
 const ORDINAL = ['1st', '2nd', '3rd', '4th'];
@@ -1083,6 +1161,20 @@ let player = null;
 // ---------- Game state ----------
 let state = 'menu';            // welcome | menu | tracks | countdown | racing | finished
 let welcomeT = 0;              // seconds spent on the welcome screen
+let gameMode = 'race';         // race (3-lap GP) | trial (time trial vs ghost)
+let menuPills = [];            // tappable pills on the menu (save/sound/mode)
+
+// time-trial ghost: best-lap replay per track, sampled at 20 Hz
+let ghost = null;              // { t: lapTime, d: [x, y, angle, ...] }
+let ghostRec = [];
+let ghostLastT = -1;
+
+function toggleMode() {
+  gameMode = gameMode === 'race' ? 'trial' : 'race';
+  beep(700, 0.08, 0.15);
+  startRace();
+  state = 'menu';
+}
 let trackSel = 0;              // highlighted card on the track-select screen
 let tracksCols = 4;
 let tracksGeo = null;
@@ -1107,15 +1199,27 @@ let sectorFlash = [0, 0, 0];   // seconds remaining of green highlight
 function startRace() {
   const sk = DIFFS[curDiffIx].skills;
   const pc = KART_COLORS[kartColorIx];
-  // rivals take distinct colours that avoid the player's pick
-  const pool = [2, 3, 4, 0, 1, 5].filter(i => i !== kartColorIx);
-  cars = [
-    makeCar('YOU',   pc[0], pc[1], true, 0, 1),
-    makeCar('VIPER', KART_COLORS[pool[0]][0], KART_COLORS[pool[0]][1], false, 1, sk[0]),
-    makeCar('BOLT',  KART_COLORS[pool[1]][0], KART_COLORS[pool[1]][1], false, 2, sk[1]),
-    makeCar('GHOST', KART_COLORS[pool[2]][0], KART_COLORS[pool[2]][1], false, 3, sk[2])
-  ];
+  if (gameMode === 'trial') {
+    // time trial: just you and the ghost of your best lap
+    cars = [makeCar('YOU', pc[0], pc[1], true, 0, 1)];
+    ghost = null;
+    try {
+      const gs = JSON.parse(localStorage.getItem('apexgp_ghost_' + TRACKS[curTrackIx].id));
+      if (gs && gs.t && Array.isArray(gs.d)) ghost = gs;
+    } catch (e) {}
+  } else {
+    // rivals take distinct colours that avoid the player's pick
+    const pool = [2, 3, 4, 0, 1, 5].filter(i => i !== kartColorIx);
+    cars = [
+      makeCar('YOU',   pc[0], pc[1], true, 0, 1),
+      makeCar('VIPER', KART_COLORS[pool[0]][0], KART_COLORS[pool[0]][1], false, 1, sk[0]),
+      makeCar('BOLT',  KART_COLORS[pool[1]][0], KART_COLORS[pool[1]][1], false, 2, sk[1]),
+      makeCar('GHOST', KART_COLORS[pool[2]][0], KART_COLORS[pool[2]][1], false, 3, sk[2])
+    ];
+  }
   for (const c of cars) if (!c.isPlayer) c.steerMul = DIFFS[curDiffIx].steerMul;
+  ghostRec = [];
+  ghostLastT = -1;
   player = cars[0];
   skidCtx.clearRect(0, 0, WORLD_W, WORLD_H);
   particles = [];
@@ -1243,11 +1347,24 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
             newLapRecord = true;
             flashMsg = { text: 'TRACK RECORD  ' + fmtTime(lapTime), t: 2.4 };
           }
+          // time trial: a best lap becomes the new ghost
+          if (gameMode === 'trial') {
+            if (!ghost || lapTime < ghost.t) {
+              ghost = { t: lapTime, d: ghostRec.slice() };
+              try {
+                localStorage.setItem('apexgp_ghost_' + TRACKS[curTrackIx].id,
+                  JSON.stringify({ t: lapTime, d: ghost.d.map(v => Math.round(v * 100) / 100) }));
+              } catch (e) {}
+              if (!flashMsg) flashMsg = { text: 'NEW GHOST  ' + fmtTime(lapTime), t: 2 };
+            }
+            ghostRec = [];
+            ghostLastT = -1;
+          }
         }
         car.lapStart = raceClock;
         car.lap++;
         if (car.isPlayer) {
-          if (car.lap >= TOTAL_LAPS) {
+          if (gameMode === 'race' && car.lap >= TOTAL_LAPS) {
             car.finishTime = raceClock;
             state = 'finished';
             beep(880, 0.5, 0.25);
@@ -1267,12 +1384,17 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
                 beep(1040, 0.5, 0.25);
               }
             }
-          } else if (car.lap === TOTAL_LAPS - 1) {
+          } else if (gameMode === 'race' && car.lap === TOTAL_LAPS - 1) {
             beep(740, 0.25, 0.2);
             flashMsg = { text: 'FINAL LAP', t: 2 };
           } else {
             beep(660, 0.18, 0.18);
-            flashMsg = flashMsg || { text: 'LAP ' + (car.lap + 1) + ' / ' + TOTAL_LAPS, t: 1.6 };
+            flashMsg = flashMsg || {
+              text: gameMode === 'trial'
+                ? 'LAP ' + (car.lap + 1)
+                : 'LAP ' + (car.lap + 1) + ' / ' + TOTAL_LAPS,
+              t: 1.6
+            };
           }
         } else if (car.lap >= TOTAL_LAPS && car.finishTime === null) {
           car.finishTime = raceClock;
@@ -1561,6 +1683,15 @@ function update(dt) {
   dispThrottle = damp(dispThrottle, state === 'racing' ? player.throttleSm : 0, 12, dt);
   dispBrake = damp(dispBrake, down, 14, dt);
 
+  // time trial: sample the current lap for the ghost (20 Hz)
+  if (gameMode === 'trial' && state === 'racing') {
+    const lt = raceClock - player.lapStart;
+    if (lt - ghostLastT >= 0.05) {
+      ghostRec.push(player.x, player.y, player.angle);
+      ghostLastT = lt;
+    }
+  }
+
   if (racing) {
     for (const c of cars) if (!c.isPlayer) driveAI(c, dt);
     collideCars();
@@ -1717,6 +1848,23 @@ function draw() {
     ctx.fill();
   }
 
+  // time trial: the ghost kart replays your best lap
+  if (gameMode === 'trial' && ghost && state === 'racing') {
+    const lt = raceClock - player.lapStart;
+    const n = Math.floor(ghost.d.length / 3);
+    if (n > 1) {
+      const fi = clamp(lt / 0.05, 0, n - 1.001);
+      const i0 = Math.floor(fi), fr = fi - i0;
+      const gx = lerp(ghost.d[i0 * 3], ghost.d[i0 * 3 + 3], fr);
+      const gy = lerp(ghost.d[i0 * 3 + 1], ghost.d[i0 * 3 + 4], fr);
+      const ga = ghost.d[i0 * 3 + 2] +
+        angleWrap(ghost.d[i0 * 3 + 5] - ghost.d[i0 * 3 + 2]) * fr;
+      ctx.globalAlpha = 0.45;
+      drawCar({ x: gx, y: gy, angle: ga, color: '#e8e6df', accent: '#9a958c' });
+      ctx.globalAlpha = 1;
+    }
+  }
+
   for (const c of cars) if (!c.isPlayer) drawCar(c);
   drawCar(player);
 
@@ -1766,11 +1914,13 @@ function drawHUD() {
   panel(tbX, tbY, tbW, tbH);
   ctx.textAlign = 'center';
   ctx.font = '900 24px Segoe UI, sans-serif';
-  ctx.fillStyle = rank === 0 ? '#e8542f' : '#141216';
-  ctx.fillText('P' + (rank + 1), tbX + 48, tbY + 32);
+  ctx.fillStyle = gameMode === 'trial' ? '#6f2da8' : (rank === 0 ? '#e8542f' : '#141216');
+  ctx.fillText(gameMode === 'trial' ? 'TT' : 'P' + (rank + 1), tbX + 48, tbY + 32);
   ctx.font = '700 20px Segoe UI, sans-serif';
   ctx.fillStyle = '#141216';
-  ctx.fillText('LAP ' + Math.min(player.lap + 1, TOTAL_LAPS) + '/' + TOTAL_LAPS, tbX + tbW / 2, tbY + 31);
+  ctx.fillText(gameMode === 'trial'
+    ? 'LAP ' + (player.lap + 1)
+    : 'LAP ' + Math.min(player.lap + 1, TOTAL_LAPS) + '/' + TOTAL_LAPS, tbX + tbW / 2, tbY + 31);
   ctx.font = '600 16px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(20,18,22,0.75)';
   ctx.fillText(fmtTime(state === 'countdown' ? 0 : raceClock - player.lapStart), tbX + tbW - 62, tbY + 30);
@@ -1813,10 +1963,19 @@ function drawHUD() {
   ctx.lineTo(dbX + dbW / 2, dbY + dbH - 3);
   ctx.stroke();
 
-  // ===== left: position tower with gaps =====
+  // ===== left: position tower with gaps (GP races only) =====
   const twX = COMPACT ? 10 : pad;
   const twY = COMPACT ? tbY + tbH + 44 : pad;   // below the delta bar on phones
-  if (COMPACT) {
+  if (gameMode === 'trial') {
+    // no rivals in a time trial — show the ghost target instead
+    const gw = COMPACT ? 150 : 190;
+    panel(twX, twY, gw, 38);
+    ctx.font = '700 ' + (COMPACT ? 12 : 14) + 'px Consolas, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#6f2da8';
+    ctx.fillText('GHOST ' + (ghost ? fmtTime(ghost.t) : 'none yet'), twX + 12, twY + 24);
+    ctx.textAlign = 'center';
+  } else if (COMPACT) {
     // mini tower: rank, chip, short name, gap — small so the road stays visible
     const twW = 118, rowH = 20;
     panel(twX, twY, twW, 10 + cars.length * rowH);
@@ -2393,19 +2552,30 @@ function drawMenu() {
       'tap  ◄ ►  to change track  ·  tap the top row for the full map list',
       'tap the AI row for difficulty  ·  pedals appear when the race starts'
     ] : [
-      '◄ ► — track        ▲ ▼ — AI skill        T — all tracks        C — save code',
-      'WASD / Arrows — drive        SPACE — handbrake        R — restart        M — mute'
+      '◄ ► — track        ▲ ▼ — AI skill        T — all tracks        G — race / time trial',
+      'C — save code        O — sound        SPACE — handbrake        R — restart        M — mute'
     ];
     lines.forEach((l, i) => ctx.fillText(l, VW / 2, cy + ch + (compact ? 76 : 100) + i * 24));
   }
 
-  // save-code pill, bottom-left
-  const spW2 = 128, spH2 = 34;
-  panel(12, VH - spH2 - 12, spW2, spH2, 10);
-  ctx.textAlign = 'left';
+  // bottom-left pill row: save / sound / mode
+  menuPills = [];
   ctx.font = '800 14px Segoe UI, sans-serif';
-  ctx.fillStyle = '#141216';
-  ctx.fillText('💾 SAVE CODE', 24, VH - spH2 + 10);
+  const pillDefs = compact
+    ? [['save', '💾'], ['sound', '🔊'], ['mode', gameMode === 'race' ? '🏁' : '⏱']]
+    : [['save', '💾 SAVE CODE'], ['sound', '🔊 SOUND'],
+       ['mode', gameMode === 'race' ? '🏁 MODE: RACE' : '⏱ MODE: TIME TRIAL']];
+  let px = 12;
+  const pH = 36, pY2 = VH - pH - 10;
+  ctx.textAlign = 'left';
+  for (const [id, label] of pillDefs) {
+    const w = compact ? 46 : ctx.measureText(label).width + 26;
+    panel(px, pY2, w, pH, 10);
+    ctx.fillStyle = '#141216';
+    ctx.fillText(label, px + 13, pY2 + 23);
+    menuPills.push({ id, x: px, y: pY2, w, h: pH });
+    px += w + 10;
+  }
   ctx.textAlign = 'center';
 }
 
