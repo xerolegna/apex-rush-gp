@@ -1756,33 +1756,33 @@ function drawHUD() {
   const kmh = Math.round(spd * 0.16);
 
   if (COMPACT) {
-    // ===== compact: small speed/gear cluster top-right =====
-    const spW = 148, spH = 88;
+    // ===== compact: tiny speed/gear cluster top-right =====
+    const spW = 108, spH = 60;
     const spX = VW - spW - 10, spY = twY;
     panel(spX, spY, spW, spH);
     ctx.textAlign = 'left';
-    ctx.font = '900 34px Segoe UI, sans-serif';
+    ctx.font = '900 24px Segoe UI, sans-serif';
     ctx.fillStyle = '#141216';
-    ctx.fillText(String(kmh), spX + 14, spY + 42);
-    ctx.font = '600 11px Segoe UI, sans-serif';
+    ctx.fillText(String(kmh), spX + 11, spY + 28);
+    ctx.font = '600 9px Segoe UI, sans-serif';
     ctx.fillStyle = 'rgba(20,18,22,0.55)';
-    ctx.fillText('KM/H', spX + 14, spY + 58);
-    ctx.font = '900 30px Segoe UI, sans-serif';
+    ctx.fillText('KM/H', spX + 11, spY + 40);
+    ctx.font = '900 20px Segoe UI, sans-serif';
     ctx.textAlign = 'right';
     ctx.fillStyle = player.rpm > 0.92 ? '#e8542f' : '#141216';
-    ctx.fillText(player.gear === 0 ? 'R' : String(player.gear), spX + spW - 16, spY + 42);
+    ctx.fillText(player.gear === 0 ? 'R' : String(player.gear), spX + spW - 11, spY + 28);
+    if (player.draft) {
+      ctx.font = '800 9px Segoe UI, sans-serif';
+      ctx.fillStyle = '#6f2da8';
+      ctx.fillText('DRAFT', spX + spW - 11, spY + 40);
+    }
     ctx.textAlign = 'left';
-    const rbX = spX + 14, rbY = spY + 66, rbW = spW - 28, rbH = 8;
+    const rbX = spX + 11, rbY = spY + 46, rbW = spW - 22, rbH = 6;
     ctx.fillStyle = 'rgba(20,18,22,0.12)';
     ctx.fillRect(rbX, rbY, rbW, rbH);
     const rfc = player.rpm;
     ctx.fillStyle = rfc > 0.85 ? '#e8542f' : rfc > 0.6 ? '#f5b93a' : '#4e9b3f';
     ctx.fillRect(rbX, rbY, rbW * rfc, rbH);
-    if (player.draft) {
-      ctx.font = '800 11px Segoe UI, sans-serif';
-      ctx.fillStyle = '#6f2da8';
-      ctx.fillText('DRAFT', spX + 60, spY + 22);
-    }
 
     // small minimap bottom-right, tucked above the touch pedals
     const ms = 0.52;
