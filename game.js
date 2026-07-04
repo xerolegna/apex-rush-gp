@@ -396,58 +396,6 @@ function renderTrackCanvas() {
     placed++;
   }
 
-  // grandstands flanking the start/finish straight
-  for (const side of [-1, 1]) {
-    const off = ROAD_W / 2 + 66;
-    const gx = s0.x + s0.nx * side * off;
-    const gy = s0.y + s0.ny * side * off;
-    let ok = gx > 170 && gx < WORLD_W - 170 && gy > 60 && gy < WORLD_H - 60;
-    if (ok) {
-      for (let s = 0; s < N_SAMPLES; s += 4) {
-        if (circDist(s, 0) < 40) continue;
-        const p = SAMPLES[s];
-        if (Math.hypot(p.x - gx, p.y - gy) < 150) { ok = false; break; }
-      }
-    }
-    if (!ok) continue;
-    g.save();
-    g.translate(gx, gy);
-    g.rotate(s0.dir);
-    const L = 300, D = 64;
-    g.fillStyle = 'rgba(20,18,22,0.30)';
-    g.fillRect(-L / 2 + 5, -D / 2 + 7, L, D);
-    g.fillStyle = '#cfc7b6';
-    g.fillRect(-L / 2, -D / 2, L, D);
-    g.strokeStyle = '#141216';
-    g.lineWidth = 3;
-    g.strokeRect(-L / 2, -D / 2, L, D);
-    // seat rows
-    g.strokeStyle = 'rgba(20,18,22,0.35)';
-    g.lineWidth = 2;
-    for (let rIx = 1; rIx <= 3; rIx++) {
-      const yy = -D / 2 + rIx * D / 4;
-      g.beginPath();
-      g.moveTo(-L / 2 + 6, yy);
-      g.lineTo(L / 2 - 6, yy);
-      g.stroke();
-    }
-    // crowd
-    const crowd = ['#e8542f', '#f5b93a', '#4e9b3f', '#6f2da8', '#22a7d9', '#f2efe9'];
-    for (let cD = 0; cD < 90; cD++) {
-      g.fillStyle = crowd[Math.floor(srand() * crowd.length)];
-      g.beginPath();
-      g.arc(sr(-L / 2 + 10, L / 2 - 10), sr(-D / 2 + 8, D / 2 - 8), 3, 0, TAU);
-      g.fill();
-    }
-    // white barrier on the trackside edge
-    const bY = side === 1 ? -D / 2 - 7 : D / 2 + 1;
-    g.fillStyle = '#f2efe9';
-    g.fillRect(-L / 2, bY, L, 6);
-    g.strokeStyle = '#141216';
-    g.lineWidth = 2;
-    g.strokeRect(-L / 2, bY, L, 6);
-    g.restore();
-  }
 }
 
 // ---------- Skid mark layer ----------
