@@ -768,11 +768,18 @@ function driveAI(car, dt) {
   const diffCfg = DIFFS[curDiffIx];
   const vFwd = car.vx * Math.cos(car.angle) + car.vy * Math.sin(car.angle);
 
-  // stay on the tarmac: when running wide, aim back toward the centerline
+  // curvature ahead -> corner speed target + lane choice
+  const a1 = SAMPLES[(car.idx + 14) % N_SAMPLES].dir;
+  const a2 = SAMPLES[(car.idx + 52) % N_SAMPLES].dir;
+  const curv = Math.abs(angleWrap(a2 - a1));
+
+  // approaching an apex: fade from the side lane to the middle of the
+  // track so corners are taken from the center, never from the edge
   const sN = SAMPLES[car.idx];
   const latOff = (car.x - sN.x) * sN.nx + (car.y - sN.y) * sN.ny;
   const wide = Math.abs(latOff) > ROAD_W / 2 - 28;
-  const laneTarget = wide ? -Math.sign(latOff) * 0.15 : car.laneOffset;
+  const laneScale = clamp(1 - curv * 2.5, 0, 1);   // 1 on straights, 0 in corners
+  const laneTarget = wide ? -Math.sign(latOff) * 0.15 : car.laneOffset * laneScale;
 
   const look = 14 + Math.abs(vFwd) * 0.05;
   const ti = (car.idx + Math.round(look)) % N_SAMPLES;
@@ -782,11 +789,6 @@ function driveAI(car, dt) {
   const want = Math.atan2(ty - car.y, tx - car.x);
   const diff = angleWrap(want - car.angle);
   let steer = clamp(diff * 3.4, -1, 1);
-
-  // curvature ahead -> corner speed target
-  const a1 = SAMPLES[(car.idx + 14) % N_SAMPLES].dir;
-  const a2 = SAMPLES[(car.idx + 52) % N_SAMPLES].dir;
-  const curv = Math.abs(angleWrap(a2 - a1));
   if (Math.random() < 0.005) car.aiSpeedJitter = rand(0.97, 1.03);
   let pace = car.skill * car.aiSpeedJitter;
   // rubber-band: trail the player -> push a little harder, lead -> ease off
