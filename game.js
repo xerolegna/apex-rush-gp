@@ -67,6 +67,7 @@ const TRACKS = [
 let curTrackIx = 0;
 let SAMPLES = [];
 let N_SAMPLES = 0;
+let TRACK_DS = 1;   // average spacing between centerline samples (px)
 
 // timing markers along the lap (for gaps + delta bar)
 const MARKERS = 80;
@@ -250,6 +251,12 @@ function loadTrack(ix) {
   SAMPLES = buildSamples(TRACKS[ix].ctrl);
   N_SAMPLES = SAMPLES.length;
   MARKER_LEN = N_SAMPLES / MARKERS;
+  let per = 0;
+  for (let i = 0; i < N_SAMPLES; i++) {
+    const a = SAMPLES[i], b = SAMPLES[(i + 1) % N_SAMPLES];
+    per += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  TRACK_DS = per / N_SAMPLES;
   renderTrackCanvas();
   renderMiniCanvas();
   skidCtx.clearRect(0, 0, WORLD_W, WORLD_H);
@@ -266,11 +273,14 @@ function cycleTrack(d) {
 // skills: pace multipliers for the three rivals
 // corner: how much curvature slows them (lower = braver in corners)
 // rubber: max rubber-band strength keeping the field close to the player
-// mistake: chance per ~4-9s window that a rival briefly bobbles
+// Tuned via headless lap-time simulation on APEX GP so the fastest AI lap
+// lands in: LEGEND 27-28s, PRO 29-30s, ROOKIE 30-32s.
+// bravery: fraction of the physically possible corner speed they use
+// steerMul: AI steering-authority bonus  ·  mistake: bobble chance per window
 const DIFFS = [
-  { id: 'rookie', name: 'ROOKIE', color: '#4e9b3f', skills: [0.92, 0.88, 0.85], corner: 0.46, rubber: 0,     mistake: 0.35 },
-  { id: 'pro',    name: 'PRO',    color: '#f5b93a', skills: [1.00, 0.97, 0.94], corner: 0.38, rubber: 0.035, mistake: 0.15 },
-  { id: 'legend', name: 'LEGEND', color: '#e8542f', skills: [1.06, 1.03, 1.00], corner: 0.30, rubber: 0.055, mistake: 0.04 }
+  { id: 'rookie', name: 'ROOKIE', color: '#4e9b3f', skills: [0.88, 0.86, 0.84], bravery: 0.80, steerMul: 1.00, rubber: 0,     mistake: 0.35 },
+  { id: 'pro',    name: 'PRO',    color: '#f5b93a', skills: [0.86, 0.85, 0.84], bravery: 0.88, steerMul: 1.06, rubber: 0.035, mistake: 0.15 },
+  { id: 'legend', name: 'LEGEND', color: '#e8542f', skills: [0.87, 0.86, 0.85], bravery: 0.93, steerMul: 1.12, rubber: 0.055, mistake: 0.04 }
 ];
 let curDiffIx = 1;
 try {
@@ -585,6 +595,7 @@ function makeCar(name, color, accent, isPlayer, gridSlot, skill) {
   const idx = nearestSample(bx, by, 0).idx;
   return {
     name, color, accent, isPlayer, skill,
+    steerMul: 1,
     x: bx, y: by, angle: s0.dir,
     vx: 0, vy: 0,
     steer: 0, throttleSm: 0,
@@ -633,6 +644,7 @@ function startRace() {
     makeCar('BOLT',  '#4e9b3f', '#2f6b26', false, 2, sk[1]),
     makeCar('GHOST', '#6f2da8', '#4a1c73', false, 3, sk[2])
   ];
+  for (const c of cars) if (!c.isPlayer) c.steerMul = DIFFS[curDiffIx].steerMul;
   player = cars[0];
   skidCtx.clearRect(0, 0, WORLD_W, WORLD_H);
   particles = [];
@@ -685,7 +697,7 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
   vL *= Math.exp(-dt * grip);
 
   const spd = Math.abs(vF);
-  const steerPower = 3.1 * (spd / (spd + 150)) * (1 - 0.32 * spd / (VMAX + 10));
+  const steerPower = 3.1 * (car.steerMul || 1) * (spd / (spd + 150)) * (1 - 0.32 * spd / (VMAX + 10));
   car.steer = damp(car.steer, steerInput, 11, dt);
   car.angle += car.steer * steerPower * dt * Math.sign(vF || 1);
 
@@ -857,43 +869,61 @@ function updateDraft() {
 }
 
 // ---------- AI ----------
+// top speed the steering physics can hold around a corner of radius R
+function cornerV(R, steerMul) {
+  const k = 3.1 * steerMul;
+  return clamp((k * R - 150) / (1 + 0.32 * k / (VMAX + 10) * R), 110, 520);
+}
+
 function driveAI(car, dt) {
   const diffCfg = DIFFS[curDiffIx];
   const vFwd = car.vx * Math.cos(car.angle) + car.vy * Math.sin(car.angle);
+  const spdNow = Math.abs(vFwd);
 
-  // curvature ahead -> corner speed target + lane choice
-  const a1 = SAMPLES[(car.idx + 14) % N_SAMPLES].dir;
-  const a2 = SAMPLES[(car.idx + 52) % N_SAMPLES].dir;
-  const curv = Math.abs(angleWrap(a2 - a1));
-
-  // approaching an apex: fade from the side lane to the middle of the
-  // track so corners are taken from the center, never from the edge
+  // local curvature -> fade from the side lane to the track center in corners
+  const a1 = SAMPLES[(car.idx + 6) % N_SAMPLES].dir;
+  const a2 = SAMPLES[(car.idx + 26) % N_SAMPLES].dir;
+  const curvNear = Math.abs(angleWrap(a2 - a1));
   const sN = SAMPLES[car.idx];
   const latOff = (car.x - sN.x) * sN.nx + (car.y - sN.y) * sN.ny;
   const wide = Math.abs(latOff) > ROAD_W / 2 - 28;
-  const laneScale = clamp(1 - curv * 2.5, 0, 1);   // 1 on straights, 0 in corners
+  const laneScale = clamp(1 - curvNear * 2.5, 0, 1);
   const laneTarget = wide ? -Math.sign(latOff) * 0.15 : car.laneOffset * laneScale;
 
-  const look = 14 + Math.abs(vFwd) * 0.05;
-  const ti = (car.idx + Math.round(look)) % N_SAMPLES;
-  const t = SAMPLES[ti];
-  const tx = t.x + t.nx * laneTarget * ROAD_W;
-  const ty = t.y + t.ny * laneTarget * ROAD_W;
-  const want = Math.atan2(ty - car.y, tx - car.x);
-  const diff = angleWrap(want - car.angle);
-  let steer = clamp(diff * 3.4, -1, 1);
-  if (Math.random() < 0.005) car.aiSpeedJitter = rand(0.97, 1.03);
+  // Stanley-style path tracking: curvature feedforward + heading error to
+  // the path tangent + cross-track correction toward the desired lane
+  const kA = clamp(Math.round(spdNow * 0.12 / TRACK_DS), 2, 8);
+  const dirAhead = SAMPLES[(car.idx + kA) % N_SAMPLES].dir;
+  const curvSigned = angleWrap(dirAhead - SAMPLES[car.idx].dir) / (kA * TRACK_DS);
+  const sp = 3.1 * (car.steerMul || 1) * (spdNow / (spdNow + 150)) * (1 - 0.32 * spdNow / (VMAX + 10));
+  const ff = sp > 0.05 ? clamp(vFwd * curvSigned / sp, -1, 1) : 0;
+  const headingErr = angleWrap(dirAhead - car.angle);
+  const e = latOff - laneTarget * ROAD_W;
+  let steer = clamp(ff + 1.2 * headingErr - Math.atan(2.5 * e / Math.max(spdNow, 80)), -1, 1);
+  const diff = headingErr;
+  if (Math.random() < 0.005) car.aiSpeedJitter = rand(0.985, 1.015);
   let pace = car.skill * car.aiSpeedJitter;
   // rubber-band: trail the player -> push a little harder, lead -> ease off
   if (diffCfg.rubber > 0 && car !== player) {
     const gap = raceProgress(player) - raceProgress(car);
     pace *= clamp(1 + (gap / N_SAMPLES) * 0.15, 1 - diffCfg.rubber, 1 + diffCfg.rubber);
   }
-  let targetSpd = clamp(465 * pace * (1 - curv * diffCfg.corner), 140, 520);
-
+  // scan the road ahead and brake early enough for every upcoming corner
+  let targetSpd = VMAX * pace;
+  for (let h = 0; h <= 120; h += 5) {
+    const aA = SAMPLES[(car.idx + h) % N_SAMPLES].dir;
+    const aB = SAMPLES[(car.idx + h + 8) % N_SAMPLES].dir;
+    const c = Math.abs(angleWrap(aB - aA));
+    if (c < 0.02) continue;
+    const R = (8 * TRACK_DS) / c;
+    const vc = cornerV(R, car.steerMul || 1) * diffCfg.bravery * pace;
+    const dist = Math.max(0, (h - 6) * TRACK_DS);
+    const allowed = Math.sqrt(vc * vc + 2 * 800 * dist);
+    if (allowed < targetSpd) targetSpd = allowed;
+  }
   // never trade tarmac for time: slow down when pointing badly or wide
-  if (Math.abs(diff) > 0.5) targetSpd = Math.min(targetSpd, 260);
-  if (wide) targetSpd = Math.min(targetSpd, 300);
+  if (Math.abs(diff) > 0.5) targetSpd = Math.min(targetSpd, 230);
+  if (wide) targetSpd = Math.min(targetSpd, 280);
 
   // scheduled human error: rookies bobble often, legends almost never
   car.mistakeCd -= dt;
@@ -906,8 +936,8 @@ function driveAI(car, dt) {
   }
 
   let throttle = 0, brake = 0;
-  if (vFwd < targetSpd) throttle = 1;
-  else if (vFwd > targetSpd + 15) brake = 1;
+  if (vFwd < targetSpd - 8) throttle = 1;
+  else if (vFwd > targetSpd + 10) brake = 1;
   if (car.mistakeT > 0) {
     car.mistakeT -= dt;
     steer = clamp(steer + car.mistakeSteer, -1, 1);
