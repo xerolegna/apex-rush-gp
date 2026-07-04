@@ -506,8 +506,11 @@ function updateTouchButtons(compact) {
     { id: 'brake', x: VW - m - r * 3 - 18,    y: by, r },
     { id: 'gas',   x: VW - m - r,             y: by, r }
   ];
-  // small exit-to-menu button above the left steering pair
-  menuBtn = { x: m + r, y: by - r * 1.9 - 12, r: Math.round(r * 0.6) };
+  // exit-to-menu button: on phones it sits beside the delta bar (top),
+  // on big touchscreens above the left steering pair
+  menuBtn = compact
+    ? { x: VW - 30, y: 84, r: 19, label: false }
+    : { x: m + r, y: by - r * 1.9 - 12, r: Math.round(r * 0.6), label: true };
 }
 
 function readTouches(e) {
@@ -2150,11 +2153,13 @@ function drawTouchControls() {
     ctx.lineWidth = 3;
     ctx.stroke();
     ctx.fillStyle = '#f2efe9';
-    ctx.font = '900 ' + Math.round(menuBtn.r * 0.55) + 'px Segoe UI, sans-serif';
+    ctx.font = '900 ' + Math.round(menuBtn.r * 0.75) + 'px Segoe UI, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('≡', menuBtn.x, menuBtn.y + menuBtn.r * 0.2);
-    ctx.font = '800 ' + Math.round(menuBtn.r * 0.32) + 'px Segoe UI, sans-serif';
-    ctx.fillText('MENU', menuBtn.x, menuBtn.y + menuBtn.r + 13);
+    ctx.fillText('≡', menuBtn.x, menuBtn.y + menuBtn.r * 0.26);
+    if (menuBtn.label) {
+      ctx.font = '800 ' + Math.round(menuBtn.r * 0.32) + 'px Segoe UI, sans-serif';
+      ctx.fillText('MENU', menuBtn.x, menuBtn.y + menuBtn.r + 13);
+    }
   }
 }
 
