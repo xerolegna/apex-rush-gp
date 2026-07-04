@@ -457,6 +457,7 @@ window.addEventListener('keydown', e => {
     e.preventDefault();
   keys[e.key.toLowerCase()] = true;
   initAudio();
+  if (state === 'welcome') return;
   if (e.key === 'Enter') onEnter();
   if (e.key.toLowerCase() === 'r') startRace();
   if (e.key.toLowerCase() === 'm') toggleMute();
@@ -490,6 +491,7 @@ window.addEventListener('pointerdown', e => {
 const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 const touchCtl = { left: false, right: false, gas: false, brake: false, drift: false };
 let touchButtons = [];
+let menuBtn = null;
 
 function updateTouchButtons(compact) {
   const r = Math.max(32, Math.min(46, VW * 0.055));
@@ -502,6 +504,8 @@ function updateTouchButtons(compact) {
     { id: 'brake', x: VW - m - r * 3 - 18,    y: by, r },
     { id: 'gas',   x: VW - m - r,             y: by, r }
   ];
+  // small exit-to-menu button above the left steering pair
+  menuBtn = { x: m + r, y: by - r * 1.9 - 12, r: Math.round(r * 0.6) };
 }
 
 function readTouches(e) {
@@ -527,6 +531,18 @@ canvas.addEventListener('touchcancel', e => { readTouches(e); });
 // taps drive the menus (mouse clicks and touches alike)
 let menuGeo = null;
 function handleTap(x, y) {
+  if (state === 'welcome') return;
+  if (state === 'racing' || state === 'countdown') {
+    // on-screen menu button (phones)
+    if (menuBtn) {
+      const dx = x - menuBtn.x, dy = y - menuBtn.y;
+      if (dx * dx + dy * dy < (menuBtn.r + 12) * (menuBtn.r + 12)) {
+        startRace();
+        state = 'menu';
+      }
+    }
+    return;
+  }
   if (state === 'menu') {
     const g = menuGeo;
     if (g && x > g.cx && x < g.cx + g.cw && y > g.cy && y < g.cy + g.ch) {
@@ -619,7 +635,7 @@ function initAudio() {
   // music bus: everything routes through musicGain, with a synced echo
   // on the arp for that synthwave feel
   musicGain = AC.createGain();
-  musicGain.gain.value = 0.15;
+  musicGain.gain.value = 0.24;
   musicGain.connect(masterGain);
   musicDelay = AC.createDelay(1);
   musicDelay.delayTime.value = (60 / MUSIC_BPM / 4) * 3;   // dotted-8th echo
@@ -637,6 +653,8 @@ const midi = m => 440 * Math.pow(2, (m - 69) / 12);
 // Am - F - C - G, one bar each, 16 sixteenth-steps per bar
 const BAR_ROOTS = [45, 41, 48, 43];
 const ARP_PAT = [0, 7, 12, 15, 19, 15, 12, 7];
+// melody slots (one per quarter beat across 4 bars), -1 = rest
+const LEAD_PAT = [12, -1, 15, -1, 19, -1, 17, 15, 10, -1, 12, -1, 17, 15, 12, -1];
 
 function mKick(t) {
   const o = AC.createOscillator(), g = AC.createGain();
@@ -673,6 +691,17 @@ function mBass(t, m, dur) {
   o.connect(f); f.connect(g); g.connect(musicGain);
   o.start(t); o.stop(t + dur + 0.02);
 }
+function mLead(t, m, dur) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'triangle';
+  o.frequency.value = midi(m);
+  g.gain.setValueAtTime(0.11, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g);
+  g.connect(musicGain);
+  g.connect(musicDelay);
+  o.start(t); o.stop(t + dur + 0.02);
+}
 function mArp(t, m, dur) {
   const o = AC.createOscillator(), g = AC.createGain();
   const f = AC.createBiquadFilter();
@@ -704,6 +733,11 @@ function scheduleMusic() {
     }
     if (s % 2 === 0) mBass(t, root + (s % 16 === 14 ? 12 : 0), stepDur * 1.8);
     if (racing || s % 2 === 0) mArp(t, root + 12 + ARP_PAT[s % 8], stepDur * 0.9);
+    // singable lead line on the quarter beats
+    if (s % 4 === 0) {
+      const n = LEAD_PAT[(s / 4) % LEAD_PAT.length];
+      if (n >= 0) mLead(t, root + 12 + n, stepDur * 3.2);
+    }
     musicTime += stepDur;
     musicStep = (musicStep + 1) % 64;
   }
@@ -793,7 +827,8 @@ let cars = [];
 let player = null;
 
 // ---------- Game state ----------
-let state = 'menu';            // menu | tracks | countdown | racing | finished
+let state = 'menu';            // welcome | menu | tracks | countdown | racing | finished
+let welcomeT = 0;              // seconds spent on the welcome screen
 let trackSel = 0;              // highlighted card on the track-select screen
 let tracksCols = 4;
 let tracksGeo = null;
@@ -1227,6 +1262,11 @@ function fmtSector(t) {
 let dispThrottle = 0, dispBrake = 0;
 
 function update(dt) {
+  if (state === 'welcome') {
+    welcomeT += dt;
+    if (welcomeT >= 2) state = 'menu';
+    return;
+  }
   if (state === 'menu' || state === 'tracks') return;
 
   if (state === 'countdown') {
@@ -1453,6 +1493,7 @@ function panel(x, y, w, h, r) {
 function drawHUD() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
+  if (state === 'welcome') { drawWelcome(); return; }
   if (state === 'menu') { drawMenu(); return; }
   if (state === 'tracks') { drawTracks(); return; }
 
@@ -1828,6 +1869,36 @@ function drawHUD() {
   if (state === 'finished') drawResults();
 }
 
+function drawWelcome() {
+  ctx.fillStyle = 'rgba(70,22,72,0.62)';
+  ctx.fillRect(0, 0, VW, VH);
+  ctx.textAlign = 'center';
+  const ts = Math.round(Math.min(54, VW * 0.075));
+  ctx.font = '900 ' + ts + 'px Segoe UI, sans-serif';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#141216';
+  ctx.lineWidth = Math.max(5, ts * 0.14);
+  ctx.strokeText('WELCOME,', VW / 2, VH * 0.36);
+  ctx.fillStyle = '#f2efe9';
+  ctx.fillText('WELCOME,', VW / 2, VH * 0.36);
+  ctx.strokeText('APEX RUSH RACER', VW / 2, VH * 0.36 + ts * 1.25);
+  ctx.fillStyle = '#f5b93a';
+  ctx.fillText('APEX RUSH RACER', VW / 2, VH * 0.36 + ts * 1.25);
+
+  // loading bar
+  const bw = Math.min(380, VW * 0.62), bh = 20;
+  const bx = VW / 2 - bw / 2, by = VH * 0.60;
+  panel(bx, by, bw, bh, 10);
+  const f = clamp(welcomeT / 2, 0, 1);
+  ctx.fillStyle = '#4e9b3f';
+  ctx.beginPath();
+  ctx.roundRect(bx + 3, by + 3, Math.max(8, (bw - 6) * f), bh - 6, 7);
+  ctx.fill();
+  ctx.font = '600 14px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText('loading the grid…', VW / 2, by + 46);
+}
+
 function drawTracks() {
   ctx.fillStyle = 'rgba(70,22,72,0.55)';
   ctx.fillRect(0, 0, VW, VH);
@@ -1955,6 +2026,22 @@ function drawTouchControls() {
       ctx.font = '900 ' + Math.round(b.r * 0.32) + 'px Segoe UI, sans-serif';
       ctx.fillText(b.id.toUpperCase(), b.x, b.y + b.r * 0.12);
     }
+  }
+  // exit-to-menu button
+  if (menuBtn) {
+    ctx.fillStyle = 'rgba(20,18,22,0.85)';
+    ctx.beginPath(); ctx.arc(menuBtn.x + 2, menuBtn.y + 3, menuBtn.r, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(232,84,47,0.92)';
+    ctx.beginPath(); ctx.arc(menuBtn.x, menuBtn.y, menuBtn.r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#141216';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = '#f2efe9';
+    ctx.font = '900 ' + Math.round(menuBtn.r * 0.55) + 'px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('≡', menuBtn.x, menuBtn.y + menuBtn.r * 0.2);
+    ctx.font = '800 ' + Math.round(menuBtn.r * 0.32) + 'px Segoe UI, sans-serif';
+    ctx.fillText('MENU', menuBtn.x, menuBtn.y + menuBtn.r + 13);
   }
 }
 
@@ -2131,5 +2218,5 @@ try {
 if (!isUnlocked(bootIx)) bootIx = 0;
 loadTrack(bootIx);
 startRace();
-state = 'menu';
+state = 'welcome';
 requestAnimationFrame(frame);
