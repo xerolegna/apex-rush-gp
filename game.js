@@ -35,7 +35,9 @@ function rand(a, b) { return a + Math.random() * (b - a); }
 const WORLD_W = 4200, WORLD_H = 3000;
 const ROAD_W = 132;
 
-// three circuits, all inside the same world
+// 13 circuits, all inside the same world. The first 3 start unlocked;
+// each further one unlocks by mastering a track (3 race wins on it).
+// All layouts validated for self-overlap / corner tightness (trackcheck).
 const TRACKS = [
   {
     id: 'gp', name: 'APEX GP',
@@ -61,8 +63,95 @@ const TRACKS = [
       [2100, 2550], [1100, 2400], [600, 2650], [420, 1900],
       [820, 1450], [430, 950]
     ]
+  },
+  {
+    id: 'sunset', name: 'SUNSET SPRINT',
+    ctrl: [
+      [700, 600], [2000, 450], [3300, 600], [3800, 1400],
+      [3300, 2200], [2600, 1900], [1800, 2400], [900, 2400],
+      [400, 1500]
+    ]
+  },
+  {
+    id: 'horseshoe', name: 'GRAND HORSESHOE',
+    ctrl: [
+      [600, 500], [2100, 400], [3600, 500], [3800, 1300],
+      [3300, 1500], [2100, 1400], [1500, 1420], [1050, 1680],
+      [1700, 1900], [2400, 1890], [3200, 1900], [3700, 2100],
+      [3300, 2650], [1800, 2600], [600, 2400], [380, 1400]
+    ]
+  },
+  {
+    id: 'canyon', name: 'CANYON RUN',
+    ctrl: [
+      [500, 450], [2200, 420], [3700, 550], [3750, 1150],
+      [2500, 1300], [1200, 1200], [900, 1650], [2000, 1750],
+      [3400, 1700], [3700, 2150], [3000, 2650], [1500, 2550],
+      [500, 2450], [380, 1300]
+    ]
+  },
+  {
+    id: 'seaside', name: 'SEASIDE LOOP',
+    ctrl: [
+      [700, 550], [2100, 480], [3500, 550], [3800, 1500],
+      [3450, 2450], [2700, 2350], [2300, 2550], [1700, 2350],
+      [1100, 2550], [500, 2300], [400, 1400]
+    ]
+  },
+  {
+    id: 'vale', name: 'VELOCITY VALE',
+    ctrl: [
+      [800, 650], [2200, 500], [3600, 650], [3850, 1500],
+      [3550, 2350], [2300, 2500], [1000, 2350], [550, 1900],
+      [1500, 1500], [550, 1100]
+    ]
+  },
+  {
+    id: 'lakes', name: 'TWIN LAKES',
+    ctrl: [
+      [700, 500], [1900, 650], [3100, 450], [3700, 900],
+      [3250, 1350], [2650, 1500], [3250, 1950], [3700, 2400],
+      [2900, 2650], [1700, 2400], [700, 2600], [420, 2000],
+      [1450, 1500], [420, 1000]
+    ]
+  },
+  {
+    id: 'rush', name: 'RUSH HOUR',
+    ctrl: [
+      [600, 600], [1600, 450], [2600, 700], [3600, 500],
+      [3800, 1200], [3200, 1600], [3750, 2000], [3300, 2600],
+      [2200, 2300], [1300, 2650], [600, 2350], [900, 1800],
+      [420, 1300]
+    ]
+  },
+  {
+    id: 'trident', name: 'TRIDENT PEAK',
+    ctrl: [
+      [2100, 420], [3400, 900], [3750, 2100], [3100, 2650],
+      [2100, 2300], [1100, 2650], [450, 2100], [800, 900]
+    ]
+  },
+  {
+    id: 'spiral', name: 'SPIRAL SPRINGS',
+    ctrl: [
+      [700, 500], [2400, 430], [3500, 700], [3300, 1200],
+      [3750, 1700], [3350, 2300], [2400, 2600], [1900, 2100],
+      [1300, 2550], [600, 2300], [420, 1350], [900, 900]
+    ]
+  },
+  {
+    id: 'midnight', name: 'MIDNIGHT GP',
+    ctrl: [
+      [500, 450], [1600, 550], [2700, 400], [3700, 600],
+      [3800, 1350], [3350, 1200], [2900, 1500], [3500, 1800],
+      [3750, 2350], [3000, 2700], [2200, 2350], [1500, 2650],
+      [800, 2450], [1100, 1900], [420, 1600], [850, 1200],
+      [400, 800]
+    ]
   }
 ];
+const STARTER_TRACKS = 3;
+const WINS_TO_MASTER = 3;
 
 let curTrackIx = 0;
 let SAMPLES = [];
@@ -245,6 +334,54 @@ function renderMiniCanvas() {
   g.stroke();
 }
 
+// small layout thumbnails for the track-select screen (built once)
+const PREV_W = 128, PREV_H = 90;
+const PREVIEWS = TRACKS.map(t => {
+  const s = buildSamples(t.ctrl);
+  const c = document.createElement('canvas');
+  c.width = PREV_W;
+  c.height = PREV_H;
+  const g = c.getContext('2d');
+  const sx = (PREV_W - 16) / WORLD_W, sy = (PREV_H - 16) / WORLD_H;
+  g.translate(8, 8);
+  g.lineJoin = 'round';
+  g.beginPath();
+  g.moveTo(s[0].x * sx, s[0].y * sy);
+  for (let i = 1; i < s.length; i += 4) g.lineTo(s[i].x * sx, s[i].y * sy);
+  g.closePath();
+  g.strokeStyle = '#141216';
+  g.lineWidth = 5;
+  g.stroke();
+  g.strokeStyle = '#8b8493';
+  g.lineWidth = 2.5;
+  g.stroke();
+  return c;
+});
+
+// ---------- Progression: race wins unlock new tracks ----------
+let memWins = {};
+function getWins() {
+  try {
+    const w = JSON.parse(localStorage.getItem('apexgp_wins'));
+    if (w) return w;
+  } catch (e) {}
+  return memWins;
+}
+function addWin(id) {
+  const w = getWins();
+  w[id] = (w[id] || 0) + 1;
+  memWins = w;
+  try { localStorage.setItem('apexgp_wins', JSON.stringify(w)); } catch (e) {}
+  return w[id];
+}
+function unlockedCount() {
+  const w = getWins();
+  let mastered = 0;
+  for (const t of TRACKS) if ((w[t.id] || 0) >= WINS_TO_MASTER) mastered++;
+  return Math.min(STARTER_TRACKS + mastered, TRACKS.length);
+}
+function isUnlocked(ix) { return ix < unlockedCount(); }
+
 // swap the whole world over to another circuit
 function loadTrack(ix) {
   curTrackIx = ix;
@@ -260,10 +397,13 @@ function loadTrack(ix) {
   renderTrackCanvas();
   renderMiniCanvas();
   skidCtx.clearRect(0, 0, WORLD_W, WORLD_H);
+  try { localStorage.setItem('apexgp_lastTrack', String(ix)); } catch (e) {}
 }
 
 function cycleTrack(d) {
-  loadTrack((curTrackIx + d + TRACKS.length) % TRACKS.length);
+  let ix = curTrackIx;
+  do { ix = (ix + d + TRACKS.length) % TRACKS.length; } while (!isUnlocked(ix));
+  loadTrack(ix);
   startRace();
   state = 'menu';
   beep(520, 0.08, 0.15);
@@ -324,7 +464,21 @@ window.addEventListener('keydown', e => {
   if (state === 'menu' && (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd')) cycleTrack(1);
   if (state === 'menu' && (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w')) cycleDiff(1);
   if (state === 'menu' && (e.key === 'ArrowDown' || e.key.toLowerCase() === 's')) cycleDiff(-1);
-  if (e.key === 'Escape' && state !== 'menu') { startRace(); state = 'menu'; }
+  if (e.key.toLowerCase() === 't' && (state === 'menu' || state === 'tracks')) {
+    trackSel = curTrackIx;
+    state = state === 'menu' ? 'tracks' : 'menu';
+  }
+  if (state === 'tracks') {
+    const k = e.key.toLowerCase();
+    if (e.key === 'ArrowLeft' || k === 'a') trackSel = (trackSel + TRACKS.length - 1) % TRACKS.length;
+    if (e.key === 'ArrowRight' || k === 'd') trackSel = (trackSel + 1) % TRACKS.length;
+    if (e.key === 'ArrowUp' || k === 'w') trackSel = (trackSel - tracksCols + TRACKS.length) % TRACKS.length;
+    if (e.key === 'ArrowDown' || k === 's') trackSel = (trackSel + tracksCols) % TRACKS.length;
+  }
+  if (e.key === 'Escape' && state !== 'menu') {
+    if (state !== 'tracks') startRace();
+    state = 'menu';
+  }
 });
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 window.addEventListener('pointerdown', e => {
@@ -376,6 +530,11 @@ function handleTap(x, y) {
   if (state === 'menu') {
     const g = menuGeo;
     if (g && x > g.cx && x < g.cx + g.cw && y > g.cy && y < g.cy + g.ch) {
+      if (y < g.cy + 34) {          // header row -> full track map
+        trackSel = curTrackIx;
+        state = 'tracks';
+        return;
+      }
       const trackRowY = y > g.cy + 34 && y < g.cy + (g.compact ? 68 : 76);
       const diffRowY = y > g.cy + (g.compact ? 68 : 76) && y < g.cy + (g.compact ? 100 : 112);
       if (trackRowY) {
@@ -386,6 +545,21 @@ function handleTap(x, y) {
       return;              // dead area of the card
     }
     onEnter();
+  } else if (state === 'tracks') {
+    // back zone (top-left)
+    if (y < 52 && x < 170) { state = 'menu'; return; }
+    const g = tracksGeo;
+    if (!g) return;
+    const col = Math.floor((x - g.x0) / (g.cardW + g.gap));
+    const row = Math.floor((y - g.y0) / (g.cardH + g.gap));
+    if (col < 0 || col >= g.cols || row < 0) return;
+    const inCardX = x - g.x0 - col * (g.cardW + g.gap) <= g.cardW;
+    const inCardY = y - g.y0 - row * (g.cardH + g.gap) <= g.cardH;
+    const ix = row * g.cols + col;
+    if (inCardX && inCardY && ix < TRACKS.length) {
+      trackSel = ix;
+      onEnter();
+    }
   } else if (state === 'finished') {
     // small zone on the "choose another track" line goes back to the menu
     if (Math.abs(y - (VH * 0.78 + 24)) < 28) { startRace(); state = 'menu'; return; }
@@ -567,14 +741,14 @@ function gearOf(spd) {
 
 // ---------- High scores (per track, kept in localStorage) ----------
 const memHS = {};   // fallback when storage is blocked (e.g. sandboxed iframe)
-function getHS() {
-  const id = TRACKS[curTrackIx].id;
+function getHSFor(id) {
   try {
     const v = JSON.parse(localStorage.getItem('apexgp_hs_' + id));
     if (v) return v;
   } catch (e) {}
   return memHS[id] || {};
 }
+function getHS() { return getHSFor(TRACKS[curTrackIx].id); }
 function saveHS(hs) {
   const id = TRACKS[curTrackIx].id;
   memHS[id] = hs;
@@ -619,7 +793,12 @@ let cars = [];
 let player = null;
 
 // ---------- Game state ----------
-let state = 'menu';            // menu | countdown | racing | finished
+let state = 'menu';            // menu | tracks | countdown | racing | finished
+let trackSel = 0;              // highlighted card on the track-select screen
+let tracksCols = 4;
+let tracksGeo = null;
+let tracksMsg = 0;             // timestamp until which the "locked" hint shows
+let unlockMsg = null;          // name of a track unlocked by the last win
 let raceClock = 0;
 let countT = 0;
 let lastBeepAt = -1;
@@ -663,9 +842,20 @@ function startRace() {
   sectorFlash = [0, 0, 0];
   newLapRecord = false;
   newRaceRecord = false;
+  unlockMsg = null;
 }
 
 function onEnter() {
+  if (state === 'tracks') {
+    if (isUnlocked(trackSel)) {
+      loadTrack(trackSel);
+      startRace();
+    } else {
+      tracksMsg = performance.now() + 2200;
+      beep(180, 0.15, 0.2);
+    }
+    return;
+  }
   if (state === 'menu' || state === 'finished') startRace();
 }
 
@@ -774,6 +964,16 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
               rhs.bestRace = raceClock;
               saveHS(rhs);
               newRaceRecord = true;
+            }
+            // a race win counts toward mastering this track (3 wins
+            // on one track unlock the next circuit)
+            if (standings()[0] === car) {
+              const before = unlockedCount();
+              addWin(TRACKS[curTrackIx].id);
+              if (unlockedCount() > before && before < TRACKS.length) {
+                unlockMsg = TRACKS[before].name;
+                beep(1040, 0.5, 0.25);
+              }
             }
           } else if (car.lap === TOTAL_LAPS - 1) {
             beep(740, 0.25, 0.2);
@@ -1027,7 +1227,7 @@ function fmtSector(t) {
 let dispThrottle = 0, dispBrake = 0;
 
 function update(dt) {
-  if (state === 'menu') return;
+  if (state === 'menu' || state === 'tracks') return;
 
   if (state === 'countdown') {
     countT -= dt;
@@ -1227,6 +1427,7 @@ function drawHUD() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
   if (state === 'menu') { drawMenu(); return; }
+  if (state === 'tracks') { drawTracks(); return; }
 
   const pad = 16;
   const COMPACT = VW < 760 || VH < 560;
@@ -1600,6 +1801,114 @@ function drawHUD() {
   if (state === 'finished') drawResults();
 }
 
+function drawTracks() {
+  ctx.fillStyle = 'rgba(70,22,72,0.55)';
+  ctx.fillRect(0, 0, VW, VH);
+  const unlocked = unlockedCount();
+  const wins = getWins();
+  const compact = VW < 700;
+
+  // header
+  ctx.textAlign = 'left';
+  ctx.font = '800 17px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText('◄ BACK', 18, 34);
+  ctx.textAlign = 'center';
+  ctx.font = '900 ' + (compact ? 24 : 32) + 'px Segoe UI, sans-serif';
+  ctx.strokeStyle = '#141216';
+  ctx.lineWidth = 7;
+  ctx.lineJoin = 'round';
+  ctx.strokeText('SELECT TRACK', VW / 2, 38);
+  ctx.fillStyle = '#f5b93a';
+  ctx.fillText('SELECT TRACK', VW / 2, 38);
+  ctx.font = '600 ' + (compact ? 11 : 13) + 'px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fillText(unlocked + ' / ' + TRACKS.length + ' unlocked   ·   win ' + WINS_TO_MASTER +
+    ' races on one track to unlock the next', VW / 2, 62);
+
+  // grid geometry
+  const cols = VW < 640 ? 3 : VW < 1000 ? 4 : 5;
+  tracksCols = cols;
+  const rows = Math.ceil(TRACKS.length / cols);
+  const gap = 12;
+  let cardW = Math.min(190, (VW - 32 - (cols - 1) * gap) / cols);
+  const headerH = 80;
+  const maxCardH = (VH - headerH - 14 - (rows - 1) * gap) / rows;
+  let prevH = (cardW - 14) * 0.62;
+  let cardH = prevH + 46;
+  if (cardH > maxCardH) {
+    cardH = Math.max(70, maxCardH);
+    prevH = cardH - 46;
+    cardW = Math.min(cardW, prevH / 0.62 + 14);
+  }
+  const gridW = cols * cardW + (cols - 1) * gap;
+  const x0 = VW / 2 - gridW / 2;
+  const y0 = headerH;
+  tracksGeo = { x0, y0, cardW, cardH, gap, cols };
+
+  TRACKS.forEach((t, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = x0 + col * (cardW + gap), y = y0 + row * (cardH + gap);
+    const open = isUnlocked(i);
+    panel(x, y, cardW, cardH, 8);
+    if (i === trackSel) {
+      ctx.strokeStyle = '#f5b93a';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.roundRect(x - 2, y - 2, cardW + 4, cardH + 4, 10);
+      ctx.stroke();
+    }
+    ctx.drawImage(PREVIEWS[i], x + 7, y + 6, cardW - 14, prevH);
+    ctx.textAlign = 'center';
+    ctx.font = '800 ' + Math.min(12, cardW * 0.085) + 'px Segoe UI, sans-serif';
+    ctx.fillStyle = '#141216';
+    ctx.fillText(t.name, x + cardW / 2, y + prevH + 20);
+
+    if (open) {
+      // win pips toward mastery + best lap
+      const w = Math.min(wins[t.id] || 0, WINS_TO_MASTER);
+      for (let p = 0; p < WINS_TO_MASTER; p++) {
+        ctx.fillStyle = p < w ? (w >= WINS_TO_MASTER ? '#f5b93a' : '#4e9b3f') : 'rgba(20,18,22,0.15)';
+        ctx.beginPath();
+        ctx.arc(x + cardW / 2 - 26 + p * 14, y + prevH + 32, 4.5, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = '#141216';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.font = '600 9px Consolas, monospace';
+      ctx.fillStyle = 'rgba(20,18,22,0.6)';
+      ctx.textAlign = 'right';
+      ctx.fillText(fmtTime(getHSFor(t.id).bestLap).slice(0, 7), x + cardW - 7, y + prevH + 36);
+      ctx.textAlign = 'center';
+    } else {
+      // locked: grey out + padlock
+      ctx.fillStyle = 'rgba(60,20,62,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(x, y, cardW, cardH, 8);
+      ctx.fill();
+      ctx.font = Math.round(cardH * 0.3) + 'px Segoe UI, sans-serif';
+      ctx.fillText('🔒', x + cardW / 2, y + cardH / 2 + 4);
+      if (i === unlocked) {
+        ctx.font = '700 ' + Math.min(10, cardW * 0.075) + 'px Segoe UI, sans-serif';
+        ctx.fillStyle = '#f5b93a';
+        ctx.fillText('NEXT UNLOCK', x + cardW / 2, y + cardH - 8);
+      }
+    }
+  });
+
+  // locked-tap feedback
+  if (performance.now() < tracksMsg) {
+    ctx.font = '800 ' + (compact ? 14 : 18) + 'px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = '#141216';
+    ctx.lineWidth = 5;
+    ctx.strokeText('LOCKED — win ' + WINS_TO_MASTER + ' races on one track to unlock the next', VW / 2, VH - 18);
+    ctx.fillStyle = '#f5b93a';
+    ctx.fillText('LOCKED — win ' + WINS_TO_MASTER + ' races on one track to unlock the next', VW / 2, VH - 18);
+  }
+}
+
 function drawTouchControls() {
   for (const b of touchButtons) {
     const pressed = touchCtl[b.id];
@@ -1657,7 +1966,7 @@ function drawMenu() {
   ctx.textAlign = 'center';
   ctx.font = '700 13px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(20,18,22,0.55)';
-  ctx.fillText('CHOOSE  TRACK   ' + (curTrackIx + 1) + ' / ' + TRACKS.length, VW / 2, cy + 24);
+  ctx.fillText('TRACK  ' + (curTrackIx + 1) + ' / ' + TRACKS.length + '   ·   ▦ ALL TRACKS (T)', VW / 2, cy + 24);
   ctx.font = '900 ' + (compact ? 23 : 32) + 'px Segoe UI, sans-serif';
   ctx.fillStyle = '#141216';
   ctx.fillText('◄   ' + TRACKS[curTrackIx].name + '   ►', VW / 2, cy + (compact ? 56 : 64));
@@ -1693,11 +2002,11 @@ function drawMenu() {
     ctx.font = '400 ' + (compact ? 12 : 15) + 'px Segoe UI, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.65)';
     const lines = IS_TOUCH ? [
-      'tap  ◄ ►  to change track   ·   tap the AI row for difficulty',
-      'on-screen pedals appear when the race starts'
+      'tap  ◄ ►  to change track  ·  tap the top row for the full map list',
+      'tap the AI row for difficulty  ·  pedals appear when the race starts'
     ] : [
-      '◄ ► — track        ▲ ▼ — AI skill        WASD / Arrows — drive        SPACE — handbrake',
-      'R — restart        ESC — track select        M — mute'
+      '◄ ► — track        ▲ ▼ — AI skill        T — all tracks        SPACE — handbrake',
+      'WASD / Arrows — drive        R — restart        ESC — menu        M — mute'
     ];
     lines.forEach((l, i) => ctx.fillText(l, VW / 2, cy + ch + (compact ? 76 : 100) + i * 24));
   }
@@ -1728,12 +2037,19 @@ function drawResults() {
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.fillText('Total  ' + fmtTime(player.finishTime) + '        Best lap  ' + fmtTime(player.bestLap), VW / 2, VH * 0.24 + 100);
 
-  if (newRaceRecord || newLapRecord) {
-    const blink = Math.sin(performance.now() / 200) > -0.3;
-    if (blink) {
-      ctx.font = '800 24px Segoe UI, sans-serif';
-      ctx.fillStyle = '#f5b93a';
-      ctx.fillText(newRaceRecord ? '★  NEW TRACK RECORD  ★' : '★  NEW LAP RECORD  ★', VW / 2, VH * 0.24 + 134);
+  const winsHere = Math.min(getWins()[TRACKS[curTrackIx].id] || 0, WINS_TO_MASTER);
+  ctx.font = '600 15px Segoe UI, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fillText('WINS ON THIS TRACK   ' + winsHere + ' / ' + WINS_TO_MASTER, VW / 2, VH * 0.24 + 126);
+
+  const blink = Math.sin(performance.now() / 200) > -0.3;
+  if (blink) {
+    ctx.font = '800 24px Segoe UI, sans-serif';
+    ctx.fillStyle = '#f5b93a';
+    if (unlockMsg) {
+      ctx.fillText('🔓  NEW TRACK UNLOCKED — ' + unlockMsg + '  🔓', VW / 2, VH * 0.24 + 154);
+    } else if (newRaceRecord || newLapRecord) {
+      ctx.fillText(newRaceRecord ? '★  NEW TRACK RECORD  ★' : '★  NEW LAP RECORD  ★', VW / 2, VH * 0.24 + 154);
     }
   }
 
@@ -1779,7 +2095,14 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-loadTrack(0);
+// boot on the last-driven track (if it's still unlocked)
+let bootIx = 0;
+try {
+  const s = parseInt(localStorage.getItem('apexgp_lastTrack'), 10);
+  if (s >= 0 && s < TRACKS.length) bootIx = s;
+} catch (e) {}
+if (!isUnlocked(bootIx)) bootIx = 0;
+loadTrack(bootIx);
 startRace();
 state = 'menu';
 requestAnimationFrame(frame);
