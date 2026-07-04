@@ -387,6 +387,7 @@ function handleTap(x, y) {
 let AC = null, masterGain = null, muted = false;
 let engineOsc = null, engineOsc2 = null, engineGain = null, engineFilter = null;
 let skidGain = null;
+let musicGain = null, musicDelay = null, noiseBuf = null;
 
 function initAudio() {
   if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
@@ -414,11 +415,11 @@ function initAudio() {
   engineOsc2.start();
 
   const len = AC.sampleRate * 1;
-  const buf = AC.createBuffer(1, len, AC.sampleRate);
-  const d = buf.getChannelData(0);
+  noiseBuf = AC.createBuffer(1, len, AC.sampleRate);
+  const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   const noise = AC.createBufferSource();
-  noise.buffer = buf;
+  noise.buffer = noiseBuf;
   noise.loop = true;
   const bp = AC.createBiquadFilter();
   bp.type = 'bandpass';
@@ -430,6 +431,98 @@ function initAudio() {
   bp.connect(skidGain);
   skidGain.connect(masterGain);
   noise.start();
+
+  // music bus: everything routes through musicGain, with a synced echo
+  // on the arp for that synthwave feel
+  musicGain = AC.createGain();
+  musicGain.gain.value = 0.15;
+  musicGain.connect(masterGain);
+  musicDelay = AC.createDelay(1);
+  musicDelay.delayTime.value = (60 / MUSIC_BPM / 4) * 3;   // dotted-8th echo
+  const fb = AC.createGain();
+  fb.gain.value = 0.3;
+  musicDelay.connect(fb);
+  fb.connect(musicDelay);
+  musicDelay.connect(musicGain);
+}
+
+// ---------- Procedural background music (original, no samples) ----------
+const MUSIC_BPM = 124;
+let musicTime = 0, musicStep = 0;
+const midi = m => 440 * Math.pow(2, (m - 69) / 12);
+// Am - F - C - G, one bar each, 16 sixteenth-steps per bar
+const BAR_ROOTS = [45, 41, 48, 43];
+const ARP_PAT = [0, 7, 12, 15, 19, 15, 12, 7];
+
+function mKick(t) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(150, t);
+  o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+  g.gain.setValueAtTime(0.6, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+  o.connect(g); g.connect(musicGain);
+  o.start(t); o.stop(t + 0.18);
+}
+function mNoiseHit(t, filterType, freq, vol, dur) {
+  const s = AC.createBufferSource();
+  s.buffer = noiseBuf;
+  const f = AC.createBiquadFilter();
+  f.type = filterType;
+  f.frequency.value = freq;
+  const g = AC.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  s.connect(f); f.connect(g); g.connect(musicGain);
+  s.start(t); s.stop(t + dur + 0.02);
+}
+function mBass(t, m, dur) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  const f = AC.createBiquadFilter();
+  o.type = 'square';
+  o.frequency.value = midi(m);
+  f.type = 'lowpass';
+  f.frequency.value = 420;
+  g.gain.setValueAtTime(0.22, t);
+  g.gain.setValueAtTime(0.22, t + dur * 0.6);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(f); f.connect(g); g.connect(musicGain);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function mArp(t, m, dur) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  const f = AC.createBiquadFilter();
+  o.type = 'sawtooth';
+  o.frequency.value = midi(m);
+  f.type = 'lowpass';
+  f.frequency.value = 2400;
+  g.gain.setValueAtTime(0.07, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(f); f.connect(g);
+  g.connect(musicGain);
+  g.connect(musicDelay);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+
+function scheduleMusic() {
+  if (!AC || !musicGain || AC.state !== 'running') return;
+  const stepDur = 60 / MUSIC_BPM / 4;
+  if (musicTime < AC.currentTime) musicTime = AC.currentTime + 0.05;
+  const racing = state === 'racing' || state === 'countdown';
+  while (musicTime < AC.currentTime + 0.15) {
+    const s = musicStep, t = musicTime;
+    const root = BAR_ROOTS[Math.floor(s / 16) % 4];
+    // drums only once the race is on
+    if (racing) {
+      if (s % 4 === 0) mKick(t);
+      if (s % 8 === 4) mNoiseHit(t, 'bandpass', 1800, 0.25, 0.12);   // snare
+      if (s % 2 === 1) mNoiseHit(t, 'highpass', 7000, 0.06, 0.04);   // hat
+    }
+    if (s % 2 === 0) mBass(t, root + (s % 16 === 14 ? 12 : 0), stepDur * 1.8);
+    if (racing || s % 2 === 0) mArp(t, root + 12 + ARP_PAT[s % 8], stepDur * 0.9);
+    musicTime += stepDur;
+    musicStep = (musicStep + 1) % 64;
+  }
 }
 function toggleMute() {
   muted = !muted;
@@ -1631,6 +1724,7 @@ function frame(now) {
   const dt = Math.min((now - lastT) / 1000, 1 / 30);
   lastT = now;
   update(dt);
+  scheduleMusic();
   draw();
   requestAnimationFrame(frame);
 }
