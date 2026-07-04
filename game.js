@@ -153,6 +153,24 @@ const TRACKS = [
 const STARTER_TRACKS = 3;
 const WINS_TO_MASTER = 3;
 
+// per-track scenery theme: buildings, ponds, trees — each circuit
+// gets its own character (city, forest, lakeside...)
+const SCENERY = [
+  { b: 6,  p: 1, t: 70 },   // APEX GP — classic circuit
+  { b: 10, p: 0, t: 40 },   // THUNDER OVAL — speedway complex
+  { b: 3,  p: 2, t: 90 },   // HAIRPIN HILLS — forest
+  { b: 4,  p: 2, t: 60 },   // SUNSET SPRINT
+  { b: 12, p: 0, t: 30 },   // GRAND HORSESHOE — city
+  { b: 2,  p: 3, t: 80 },   // CANYON RUN — wilderness
+  { b: 5,  p: 4, t: 55 },   // SEASIDE LOOP — waterside
+  { b: 8,  p: 1, t: 45 },   // VELOCITY VALE
+  { b: 3,  p: 6, t: 65 },   // TWIN LAKES — lakes everywhere
+  { b: 14, p: 0, t: 25 },   // RUSH HOUR — downtown
+  { b: 4,  p: 2, t: 75 },   // TRIDENT PEAK
+  { b: 6,  p: 3, t: 60 },   // SPIRAL SPRINGS
+  { b: 10, p: 2, t: 50 }    // MIDNIGHT GP — night city
+];
+
 let curTrackIx = 0;
 let SAMPLES = [];
 let N_SAMPLES = 0;
@@ -212,16 +230,34 @@ function renderTrackCanvas() {
   const g = trackCanvas.getContext('2d');
   g.setLineDash([]);
 
-  // flat pop-art magenta ground
-  g.fillStyle = '#d16fd4';
+  // seeded RNG so each track's scenery is unique but stable
+  let seed = (curTrackIx + 1) * 1013904223 >>> 0;
+  const srand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const sr = (a, b) => a + srand() * (b - a);
+
+  // grass green ground
+  g.fillStyle = '#57a04b';
   g.fillRect(0, 0, WORLD_W, WORLD_H);
 
-  for (let i = 0; i < 900; i++) {
-    g.fillStyle = Math.random() < 0.5
-      ? 'rgba(255,255,255,0.05)' : 'rgba(60,20,62,0.06)';
-    const r = rand(18, 80);
+  // brown dirt patches for that worn-infield look
+  for (let i = 0; i < 26; i++) {
+    g.fillStyle = srand() < 0.5 ? 'rgba(139,105,58,0.30)' : 'rgba(110,82,44,0.25)';
+    const r = sr(90, 260);
     g.beginPath();
-    g.ellipse(rand(0, WORLD_W), rand(0, WORLD_H), r, r * 0.6, rand(0, TAU), 0, TAU);
+    g.ellipse(sr(0, WORLD_W), sr(0, WORLD_H), r, r * sr(0.4, 0.7), sr(0, TAU), 0, TAU);
+    g.fill();
+  }
+
+  // grass mottling
+  for (let i = 0; i < 900; i++) {
+    g.fillStyle = srand() < 0.5
+      ? 'rgba(255,255,255,0.05)' : 'rgba(25,60,20,0.08)';
+    const r = sr(18, 80);
+    g.beginPath();
+    g.ellipse(sr(0, WORLD_W), sr(0, WORLD_H), r, r * 0.6, sr(0, TAU), 0, TAU);
     g.fill();
   }
 
@@ -232,6 +268,14 @@ function renderTrackCanvas() {
 
   g.lineJoin = 'round';
   g.lineCap = 'round';
+
+  // worn brown shoulder hugging the road
+  g.strokeStyle = 'rgba(124,92,52,0.40)';
+  g.lineWidth = ROAD_W + 116;
+  g.stroke(path);
+  g.strokeStyle = 'rgba(105,76,40,0.35)';
+  g.lineWidth = ROAD_W + 64;
+  g.stroke(path);
 
   // thick ink outline, then comic yellow-and-black curbs
   g.strokeStyle = '#141216';
@@ -277,26 +321,132 @@ function renderTrackCanvas() {
   }
   g.restore();
 
-  // trees / bushes
-  for (let i = 0; i < 90; i++) {
-    const x = rand(60, WORLD_W - 60), y = rand(60, WORLD_H - 60);
+  // ---- per-track scenery (seeded, unique to each circuit) ----
+  const roadDist = (x, y) => {
     let minD = Infinity;
-    for (let s = 0; s < N_SAMPLES; s += 6) {
+    for (let s = 0; s < N_SAMPLES; s += 5) {
       const p = SAMPLES[s];
       const d = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
       if (d < minD) minD = d;
     }
-    if (Math.sqrt(minD) < ROAD_W / 2 + 90) continue;
-    const r = rand(16, 34);
+    return Math.sqrt(minD);
+  };
+  const theme = SCENERY[curTrackIx % SCENERY.length];
+
+  // ponds
+  let placed = 0;
+  for (let tries = 0; tries < 80 && placed < theme.p; tries++) {
+    const rx = sr(70, 150), ry = rx * sr(0.55, 0.8);
+    const x = sr(140, WORLD_W - 140), y = sr(140, WORLD_H - 140);
+    if (roadDist(x, y) < ROAD_W / 2 + rx + 44) continue;
+    g.fillStyle = 'rgba(20,18,22,0.25)';
+    g.beginPath(); g.ellipse(x + 5, y + 7, rx, ry, 0, 0, TAU); g.fill();
+    g.fillStyle = '#3f7fb5';
+    g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); g.fill();
+    g.strokeStyle = '#141216';
+    g.lineWidth = 3;
+    g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.25)';
+    g.beginPath(); g.ellipse(x - rx * 0.25, y - ry * 0.3, rx * 0.4, ry * 0.28, 0, 0, TAU); g.fill();
+    placed++;
+  }
+
+  // buildings
+  const BUILD_COLS = ['#c9b8a0', '#b7643f', '#9aa3ab', '#d8cba8'];
+  placed = 0;
+  for (let tries = 0; tries < 260 && placed < theme.b; tries++) {
+    const w = sr(70, 150), h = sr(60, 120);
+    const x = sr(80, WORLD_W - 80 - w), y = sr(80, WORLD_H - 80 - h);
+    if (roadDist(x + w / 2, y + h / 2) < ROAD_W / 2 + Math.max(w, h) * 0.72 + 50) continue;
+    g.fillStyle = 'rgba(20,18,22,0.30)';
+    g.fillRect(x + 6, y + 8, w, h);
+    g.fillStyle = BUILD_COLS[Math.floor(srand() * BUILD_COLS.length)];
+    g.fillRect(x, y, w, h);
+    g.strokeStyle = '#141216';
+    g.lineWidth = 3;
+    g.strokeRect(x, y, w, h);
+    g.strokeStyle = 'rgba(20,18,22,0.35)';
+    g.lineWidth = 2;
+    g.strokeRect(x + 8, y + 8, w - 16, h - 16);
+    // skylights
+    g.fillStyle = 'rgba(20,18,22,0.55)';
+    const wc = Math.max(1, Math.floor((w - 24) / 26));
+    const hc = Math.max(1, Math.floor((h - 24) / 26));
+    for (let wx = 0; wx < wc; wx++)
+      for (let wy = 0; wy < hc; wy++)
+        g.fillRect(x + 16 + wx * 26, y + 16 + wy * 26, 9, 9);
+    placed++;
+  }
+
+  // trees / bushes
+  placed = 0;
+  for (let tries = 0; tries < theme.t * 4 && placed < theme.t; tries++) {
+    const x = sr(60, WORLD_W - 60), y = sr(60, WORLD_H - 60);
+    const r = sr(16, 34);
+    if (roadDist(x, y) < ROAD_W / 2 + 90) continue;
     g.fillStyle = 'rgba(20,18,22,0.30)';
     g.beginPath(); g.ellipse(x + 6, y + 8, r, r * 0.8, 0, 0, TAU); g.fill();
-    g.fillStyle = i % 3 === 0 ? '#3f8a34' : '#4e9b3f';
+    g.fillStyle = placed % 3 === 0 ? '#2e6b28' : '#3a8032';
     g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
     g.strokeStyle = '#141216';
     g.lineWidth = 3;
     g.stroke();
     g.fillStyle = 'rgba(255,255,255,0.20)';
     g.beginPath(); g.arc(x - r * 0.3, y - r * 0.3, r * 0.45, 0, TAU); g.fill();
+    placed++;
+  }
+
+  // grandstands flanking the start/finish straight
+  for (const side of [-1, 1]) {
+    const off = ROAD_W / 2 + 66;
+    const gx = s0.x + s0.nx * side * off;
+    const gy = s0.y + s0.ny * side * off;
+    let ok = gx > 170 && gx < WORLD_W - 170 && gy > 60 && gy < WORLD_H - 60;
+    if (ok) {
+      for (let s = 0; s < N_SAMPLES; s += 4) {
+        if (circDist(s, 0) < 40) continue;
+        const p = SAMPLES[s];
+        if (Math.hypot(p.x - gx, p.y - gy) < 150) { ok = false; break; }
+      }
+    }
+    if (!ok) continue;
+    g.save();
+    g.translate(gx, gy);
+    g.rotate(s0.dir);
+    const L = 300, D = 64;
+    g.fillStyle = 'rgba(20,18,22,0.30)';
+    g.fillRect(-L / 2 + 5, -D / 2 + 7, L, D);
+    g.fillStyle = '#cfc7b6';
+    g.fillRect(-L / 2, -D / 2, L, D);
+    g.strokeStyle = '#141216';
+    g.lineWidth = 3;
+    g.strokeRect(-L / 2, -D / 2, L, D);
+    // seat rows
+    g.strokeStyle = 'rgba(20,18,22,0.35)';
+    g.lineWidth = 2;
+    for (let rIx = 1; rIx <= 3; rIx++) {
+      const yy = -D / 2 + rIx * D / 4;
+      g.beginPath();
+      g.moveTo(-L / 2 + 6, yy);
+      g.lineTo(L / 2 - 6, yy);
+      g.stroke();
+    }
+    // crowd
+    const crowd = ['#e8542f', '#f5b93a', '#4e9b3f', '#6f2da8', '#22a7d9', '#f2efe9'];
+    for (let cD = 0; cD < 90; cD++) {
+      g.fillStyle = crowd[Math.floor(srand() * crowd.length)];
+      g.beginPath();
+      g.arc(sr(-L / 2 + 10, L / 2 - 10), sr(-D / 2 + 8, D / 2 - 8), 3, 0, TAU);
+      g.fill();
+    }
+    // white barrier on the trackside edge
+    const bY = side === 1 ? -D / 2 - 7 : D / 2 + 1;
+    g.fillStyle = '#f2efe9';
+    g.fillRect(-L / 2, bY, L, 6);
+    g.strokeStyle = '#141216';
+    g.lineWidth = 2;
+    g.strokeRect(-L / 2, bY, L, 6);
+    g.restore();
   }
 }
 
@@ -434,6 +584,26 @@ function cycleDiff(d) {
   beep(640, 0.08, 0.15);
 }
 
+// ---------- Kart colours ----------
+const KART_COLORS = [
+  ['#f5b93a', '#c78d16'], ['#22a7d9', '#146f94'], ['#e8542f', '#a83318'],
+  ['#4e9b3f', '#2f6b26'], ['#6f2da8', '#4a1c73'], ['#e668b5', '#a83b7d'],
+  ['#f2efe9', '#b8b2a6'], ['#33343c', '#141216']
+];
+let kartColorIx = 0;
+try {
+  const kc = parseInt(localStorage.getItem('apexgp_color'), 10);
+  if (kc >= 0 && kc < KART_COLORS.length) kartColorIx = kc;
+} catch (e) {}
+
+function setKartColor(i) {
+  kartColorIx = i;
+  try { localStorage.setItem('apexgp_color', String(i)); } catch (e) {}
+  beep(760, 0.07, 0.15);
+  startRace();          // repaint the parked grid with the new colour
+  state = 'menu';
+}
+
 // ---------- Print-grain overlay (static, like risograph paper) ----------
 const grainCanvas = document.createElement('canvas');
 grainCanvas.width = 160;
@@ -566,6 +736,10 @@ function handleTap(x, y) {
         if (x > g.cx + g.cw * 0.6) return cycleTrack(1);
       }
       if (diffRowY) return cycleDiff(1);
+      if (Math.abs(y - g.swY) < 17) {
+        const i = Math.round((x - g.swX0) / g.swGap);
+        if (i >= 0 && i < KART_COLORS.length) return setKartColor(i);
+      }
       return;              // dead area of the card
     }
     onEnter();
@@ -853,7 +1027,7 @@ let saveOverlay = null;
 function showSaveDialog() {
   if (saveOverlay) { saveOverlay.remove(); saveOverlay = null; }
   const div = document.createElement('div');
-  div.style.cssText = 'position:fixed;inset:0;background:rgba(40,10,42,0.75);' +
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(18,36,14,0.78);' +
     'display:flex;align-items:center;justify-content:center;z-index:10;' +
     "font-family:'Segoe UI',sans-serif;";
   div.innerHTML =
@@ -968,11 +1142,14 @@ let sectorFlash = [0, 0, 0];   // seconds remaining of green highlight
 
 function startRace() {
   const sk = DIFFS[curDiffIx].skills;
+  const pc = KART_COLORS[kartColorIx];
+  // rivals take distinct colours that avoid the player's pick
+  const pool = [2, 3, 4, 0, 1, 5].filter(i => i !== kartColorIx);
   cars = [
-    makeCar('YOU',   '#f5b93a', '#c78d16', true, 0, 1),
-    makeCar('VIPER', '#e8542f', '#a83318', false, 1, sk[0]),
-    makeCar('BOLT',  '#4e9b3f', '#2f6b26', false, 2, sk[1]),
-    makeCar('GHOST', '#6f2da8', '#4a1c73', false, 3, sk[2])
+    makeCar('YOU',   pc[0], pc[1], true, 0, 1),
+    makeCar('VIPER', KART_COLORS[pool[0]][0], KART_COLORS[pool[0]][1], false, 1, sk[0]),
+    makeCar('BOLT',  KART_COLORS[pool[1]][0], KART_COLORS[pool[1]][1], false, 2, sk[1]),
+    makeCar('GHOST', KART_COLORS[pool[2]][0], KART_COLORS[pool[2]][1], false, 3, sk[2])
   ];
   for (const c of cars) if (!c.isPlayer) c.steerMul = DIFFS[curDiffIx].steerMul;
   player = cars[0];
@@ -1157,7 +1334,7 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
     if (Math.random() < 0.7) spawnSmoke((rlx + rrx) / 2, (rly + rry) / 2, 'rgba(230,230,230,');
   }
   if (car.offTrack && spd > 60 && Math.random() < 0.5) {
-    spawnSmoke(car.x - c2 * 14, car.y - s2 * 14, 'rgba(228,150,230,');
+    spawnSmoke(car.x - c2 * 14, car.y - s2 * 14, 'rgba(160,125,80,');
   }
   car.prevRL = { x: rlx, y: rly };
   car.prevRR = { x: rrx, y: rry };
@@ -1548,7 +1725,7 @@ function drawCar(c) {
 
 function draw() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  ctx.fillStyle = '#b355b7';
+  ctx.fillStyle = '#3c7a34';
   ctx.fillRect(0, 0, VW, VH);
 
   const shX = shake > 0 ? rand(-shake, shake) : 0;
@@ -1986,7 +2163,7 @@ function drawHUD() {
 }
 
 function drawWelcome() {
-  ctx.fillStyle = 'rgba(70,22,72,0.62)';
+  ctx.fillStyle = 'rgba(22,48,20,0.62)';
   ctx.fillRect(0, 0, VW, VH);
   ctx.textAlign = 'center';
   const ts = Math.round(Math.min(54, VW * 0.075));
@@ -2016,7 +2193,7 @@ function drawWelcome() {
 }
 
 function drawTracks() {
-  ctx.fillStyle = 'rgba(70,22,72,0.55)';
+  ctx.fillStyle = 'rgba(22,48,20,0.55)';
   ctx.fillRect(0, 0, VW, VH);
   const unlocked = unlockedCount();
   const wins = getWins();
@@ -2097,7 +2274,7 @@ function drawTracks() {
       ctx.textAlign = 'center';
     } else {
       // locked: grey out + padlock
-      ctx.fillStyle = 'rgba(60,20,62,0.55)';
+      ctx.fillStyle = 'rgba(22,48,20,0.60)';
       ctx.beginPath();
       ctx.roundRect(x, y, cardW, cardH, 8);
       ctx.fill();
@@ -2164,7 +2341,7 @@ function drawTouchControls() {
 }
 
 function drawMenu() {
-  ctx.fillStyle = 'rgba(70,22,72,0.40)';
+  ctx.fillStyle = 'rgba(22,48,20,0.40)';
   ctx.fillRect(0, 0, VW, VH);
   ctx.textAlign = 'center';
 
@@ -2188,12 +2365,15 @@ function drawMenu() {
     ctx.fillText('3 laps  ·  3 circuits  ·  local track records', VW / 2, titleY + 44);
   }
 
-  // ---- track + difficulty selector card ----
+  // ---- track + difficulty + colour selector card ----
   const cw = Math.min(470, VW - 24);
-  const ch = compact ? 162 : 216;
+  const ch = compact ? 200 : 254;
   const cx = VW / 2 - cw / 2;
-  const cy = compact ? titleY + 34 : VH * 0.38;
-  menuGeo = { cx, cy, cw, ch, compact };
+  const cy = compact ? titleY + 34 : VH * 0.36;
+  const swY = cy + (compact ? 114 : 132);
+  const swGap = Math.min(36, (cw - 56) / KART_COLORS.length);
+  const swX0 = VW / 2 - (KART_COLORS.length - 1) * swGap / 2;
+  menuGeo = { cx, cy, cw, ch, compact, swY, swX0, swGap };
   panel(cx, cy, cw, ch);
   ctx.textAlign = 'center';
   ctx.font = '700 13px Segoe UI, sans-serif';
@@ -2207,21 +2387,33 @@ function drawMenu() {
   ctx.font = '800 ' + (compact ? 17 : 19) + 'px Segoe UI, sans-serif';
   ctx.fillStyle = dcfg.color;
   ctx.fillText('▲   AI:  ' + dcfg.name + '   ▼', VW / 2, cy + (compact ? 88 : 100));
+  // kart colour swatches
+  KART_COLORS.forEach((kc, i) => {
+    const sx2 = swX0 + i * swGap;
+    ctx.fillStyle = kc[0];
+    ctx.beginPath();
+    ctx.arc(sx2, swY, i === kartColorIx ? 10 : 7, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = '#141216';
+    ctx.lineWidth = i === kartColorIx ? 3 : 2;
+    ctx.stroke();
+  });
+
   // records for this track
   const hs = getHS();
   ctx.font = '700 ' + (compact ? 13 : 15) + 'px Consolas, monospace';
   if (compact) {
     ctx.fillStyle = '#2f6b26';
-    ctx.fillText('BEST LAP  ' + fmtTime(hs.bestLap), VW / 2, cy + 118);
+    ctx.fillText('BEST LAP  ' + fmtTime(hs.bestLap), VW / 2, cy + 152);
     ctx.fillStyle = 'rgba(20,18,22,0.75)';
-    ctx.fillText('BEST RACE ' + fmtTime(hs.bestRace), VW / 2, cy + 142);
+    ctx.fillText('BEST RACE ' + fmtTime(hs.bestRace), VW / 2, cy + 178);
   } else {
     ctx.textAlign = 'left';
     ctx.fillStyle = '#2f6b26';
-    ctx.fillText('BEST LAP   ' + fmtTime(hs.bestLap), cx + 34, cy + 148);
+    ctx.fillText('BEST LAP   ' + fmtTime(hs.bestLap), cx + 34, cy + 186);
     ctx.fillStyle = 'rgba(20,18,22,0.75)';
-    ctx.fillText('BEST RACE  ' + fmtTime(hs.bestRace), cx + 34, cy + 176);
-    ctx.drawImage(miniCanvas, cx + cw - 152, cy + 120, 122, 87);
+    ctx.fillText('BEST RACE  ' + fmtTime(hs.bestRace), cx + 34, cy + 214);
+    ctx.drawImage(miniCanvas, cx + cw - 152, cy + 158, 122, 87);
     ctx.textAlign = 'center';
   }
 
@@ -2254,7 +2446,7 @@ function drawMenu() {
 }
 
 function drawResults() {
-  ctx.fillStyle = 'rgba(70,22,72,0.50)';
+  ctx.fillStyle = 'rgba(22,48,20,0.50)';
   ctx.fillRect(0, 0, VW, VH);
 
   const order = standings();
