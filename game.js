@@ -509,7 +509,7 @@ function updateTouchButtons(compact) {
   // exit-to-menu button: on phones it sits beside the delta bar (top),
   // on big touchscreens above the left steering pair
   menuBtn = compact
-    ? { x: VW - 30, y: 84, r: 19, label: false }
+    ? { x: 28, y: 84, r: 17, label: false }
     : { x: m + r, y: by - r * 1.9 - 12, r: Math.round(r * 0.6), label: true };
 }
 
