@@ -453,6 +453,7 @@ let grainPattern = null;
 // ---------- Input ----------
 const keys = {};
 window.addEventListener('keydown', e => {
+  if (saveOverlay) return;   // typing in the save-code dialog
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key))
     e.preventDefault();
   keys[e.key.toLowerCase()] = true;
@@ -461,6 +462,7 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Enter') onEnter();
   if (e.key.toLowerCase() === 'r') startRace();
   if (e.key.toLowerCase() === 'm') toggleMute();
+  if (e.key.toLowerCase() === 'c' && state === 'menu') showSaveDialog();
   if (state === 'menu' && (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a')) cycleTrack(-1);
   if (state === 'menu' && (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd')) cycleTrack(1);
   if (state === 'menu' && (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w')) cycleDiff(1);
@@ -531,6 +533,7 @@ canvas.addEventListener('touchcancel', e => { readTouches(e); });
 // taps drive the menus (mouse clicks and touches alike)
 let menuGeo = null;
 function handleTap(x, y) {
+  if (saveOverlay) return;   // the dialog owns the screen
   if (state === 'welcome') return;
   if (state === 'racing' || state === 'countdown') {
     // on-screen menu button (phones)
@@ -544,6 +547,8 @@ function handleTap(x, y) {
     return;
   }
   if (state === 'menu') {
+    // save-code pill, bottom-left
+    if (x < 150 && y > VH - 58) { showSaveDialog(); return; }
     const g = menuGeo;
     if (g && x > g.cx && x < g.cx + g.cw && y > g.cy && y < g.cy + g.ch) {
       if (y < g.cy + 34) {          // header row -> full track map
@@ -789,6 +794,114 @@ function saveHS(hs) {
   try { localStorage.setItem('apexgp_hs_' + id, JSON.stringify(hs)); } catch (e) {}
 }
 let newLapRecord = false, newRaceRecord = false;
+
+// ---------- Save codes: export/import all progress ----------
+function collectProgress() {
+  const h = {};
+  for (const t of TRACKS) {
+    const hs = getHSFor(t.id);
+    if (hs.bestLap !== undefined || hs.bestRace !== undefined)
+      h[t.id] = { l: hs.bestLap, r: hs.bestRace };
+  }
+  return { v: 1, w: getWins(), h, d: curDiffIx };
+}
+
+function exportCode() {
+  return 'APEX1.' + btoa(JSON.stringify(collectProgress()));
+}
+
+// merge imported progress with local, always keeping the better value
+function importCode(code) {
+  try {
+    code = (code || '').trim();
+    if (!code.startsWith('APEX1.')) return false;
+    const data = JSON.parse(atob(code.slice(6)));
+    if (!data || data.v !== 1) return false;
+    const wins = getWins();
+    for (const id in (data.w || {}))
+      wins[id] = Math.max(wins[id] || 0, data.w[id] | 0);
+    memWins = wins;
+    try { localStorage.setItem('apexgp_wins', JSON.stringify(wins)); } catch (e) {}
+    for (const id in (data.h || {})) {
+      const cur = getHSFor(id);
+      const inc = data.h[id] || {};
+      const merged = {};
+      const lap = cur.bestLap === undefined ? inc.l
+        : (inc.l === undefined ? cur.bestLap : Math.min(cur.bestLap, inc.l));
+      const race = cur.bestRace === undefined ? inc.r
+        : (inc.r === undefined ? cur.bestRace : Math.min(cur.bestRace, inc.r));
+      if (lap !== undefined) merged.bestLap = lap;
+      if (race !== undefined) merged.bestRace = race;
+      memHS[id] = merged;
+      try { localStorage.setItem('apexgp_hs_' + id, JSON.stringify(merged)); } catch (e) {}
+    }
+    if (typeof data.d === 'number' && data.d >= 0 && data.d < DIFFS.length) {
+      curDiffIx = data.d;
+      try { localStorage.setItem('apexgp_diff', String(curDiffIx)); } catch (e) {}
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// DOM dialog: shows your code, copies it, and accepts a pasted one
+let saveOverlay = null;
+function showSaveDialog() {
+  if (saveOverlay) { saveOverlay.remove(); saveOverlay = null; }
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(40,10,42,0.75);' +
+    'display:flex;align-items:center;justify-content:center;z-index:10;' +
+    "font-family:'Segoe UI',sans-serif;";
+  div.innerHTML =
+    '<div style="background:#f2efe9;border:3px solid #141216;border-radius:14px;' +
+    'box-shadow:6px 7px 0 #141216;max-width:440px;width:92%;padding:18px;color:#141216;">' +
+    '<div style="font-weight:900;font-size:20px;margin-bottom:8px;">💾 SAVE CODE</div>' +
+    '<div style="font-size:13px;margin-bottom:6px;">Copy this code to back up your progress ' +
+    '(wins, unlocks, records, difficulty) — or paste a code from another device and press LOAD.</div>' +
+    '<textarea id="apexSaveTa" spellcheck="false" style="width:100%;height:96px;' +
+    'font-family:monospace;font-size:11px;border:2px solid #141216;border-radius:8px;' +
+    'padding:6px;box-sizing:border-box;background:#fff;color:#141216;' +
+    'user-select:text;-webkit-user-select:text;"></textarea>' +
+    '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">' +
+    '<button id="apexCopyBtn" style="flex:1;min-width:96px;padding:10px;font-weight:800;' +
+    'background:#4e9b3f;color:#fff;border:2px solid #141216;border-radius:8px;cursor:pointer;">COPY</button>' +
+    '<button id="apexLoadBtn" style="flex:1;min-width:96px;padding:10px;font-weight:800;' +
+    'background:#f5b93a;color:#141216;border:2px solid #141216;border-radius:8px;cursor:pointer;">LOAD</button>' +
+    '<button id="apexCloseBtn" style="flex:1;min-width:80px;padding:10px;font-weight:800;' +
+    'background:#e8542f;color:#fff;border:2px solid #141216;border-radius:8px;cursor:pointer;">CLOSE</button>' +
+    '</div>' +
+    '<div id="apexSaveMsg" style="font-size:13px;font-weight:700;margin-top:8px;min-height:17px;"></div>' +
+    '</div>';
+  document.body.appendChild(div);
+  saveOverlay = div;
+  const ta = div.querySelector('#apexSaveTa');
+  const msg = div.querySelector('#apexSaveMsg');
+  ta.value = exportCode();
+  div.querySelector('#apexCopyBtn').onclick = () => {
+    ta.value = exportCode();
+    ta.select();
+    ta.setSelectionRange(0, 999999);
+    try { document.execCommand('copy'); } catch (e) {}
+    if (navigator.clipboard) navigator.clipboard.writeText(ta.value).catch(() => {});
+    msg.textContent = 'Copied! Paste it on your other device.';
+    msg.style.color = '#2f6b26';
+  };
+  div.querySelector('#apexLoadBtn').onclick = () => {
+    if (importCode(ta.value)) {
+      msg.textContent = 'Progress loaded — wins, unlocks and records merged in.';
+      msg.style.color = '#2f6b26';
+      beep(880, 0.3, 0.2);
+    } else {
+      msg.textContent = 'That does not look like a valid save code.';
+      msg.style.color = '#a83318';
+    }
+  };
+  div.querySelector('#apexCloseBtn').onclick = () => {
+    div.remove();
+    saveOverlay = null;
+  };
+}
 
 // ---------- Cars ----------
 const TOTAL_LAPS = 3;
@@ -2119,11 +2232,20 @@ function drawMenu() {
       'tap  ◄ ►  to change track  ·  tap the top row for the full map list',
       'tap the AI row for difficulty  ·  pedals appear when the race starts'
     ] : [
-      '◄ ► — track        ▲ ▼ — AI skill        T — all tracks        SPACE — handbrake',
-      'WASD / Arrows — drive        R — restart        ESC — menu        M — mute'
+      '◄ ► — track        ▲ ▼ — AI skill        T — all tracks        C — save code',
+      'WASD / Arrows — drive        SPACE — handbrake        R — restart        M — mute'
     ];
     lines.forEach((l, i) => ctx.fillText(l, VW / 2, cy + ch + (compact ? 76 : 100) + i * 24));
   }
+
+  // save-code pill, bottom-left
+  const spW2 = 128, spH2 = 34;
+  panel(12, VH - spH2 - 12, spW2, spH2, 10);
+  ctx.textAlign = 'left';
+  ctx.font = '800 14px Segoe UI, sans-serif';
+  ctx.fillStyle = '#141216';
+  ctx.fillText('💾 SAVE CODE', 24, VH - spH2 + 10);
+  ctx.textAlign = 'center';
 }
 
 function drawResults() {
