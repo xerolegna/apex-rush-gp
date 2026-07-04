@@ -1401,6 +1401,26 @@ function drawHUD() {
       ctx.fillStyle = '#6f2da8';
       ctx.fillText('DRAFT', spX + 60, spY + 22);
     }
+
+    // small minimap bottom-right, tucked above the touch pedals
+    const ms = 0.52;
+    const mw = MINI_W * ms, mh = MINI_H * ms;
+    const rEst = Math.max(32, Math.min(46, VW * 0.055));
+    const mBottom = IS_TOUCH ? VH - 24 - rEst * 2 - 8 : VH - 10;
+    const mx2 = VW - mw - 10, my2 = mBottom - mh;
+    panel(mx2, my2, mw, mh, 8);
+    ctx.drawImage(miniCanvas, mx2, my2, mw, mh);
+    for (const c of [...order].reverse()) {
+      ctx.fillStyle = c.color;
+      ctx.beginPath();
+      ctx.arc(mx2 + (12 + c.x * MINI_SX) * ms, my2 + (12 + c.y * MINI_SY) * ms, c.isPlayer ? 3.5 : 3, 0, TAU);
+      ctx.fill();
+      if (c.isPlayer) {
+        ctx.strokeStyle = '#141216';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
   } else {
 
   // ===== bottom-left: speed / gear / rpm =====
