@@ -333,12 +333,24 @@ function renderTrackCanvas() {
   };
   const theme = SCENERY[curTrackIx % SCENERY.length];
 
+  // keep scenery pieces apart — ponds, buildings and trees never overlap
+  const items = [];
+  const clearOf = (x, y, rad) => {
+    for (const it of items) {
+      const d = Math.hypot(it.x - x, it.y - y);
+      if (d < it.rad + rad + 24) return false;
+    }
+    return true;
+  };
+
   // ponds
   let placed = 0;
-  for (let tries = 0; tries < 80 && placed < theme.p; tries++) {
+  for (let tries = 0; tries < 120 && placed < theme.p; tries++) {
     const rx = sr(70, 150), ry = rx * sr(0.55, 0.8);
     const x = sr(140, WORLD_W - 140), y = sr(140, WORLD_H - 140);
     if (roadDist(x, y) < ROAD_W / 2 + rx + 44) continue;
+    if (!clearOf(x, y, rx)) continue;
+    items.push({ x, y, rad: rx });
     g.fillStyle = 'rgba(20,18,22,0.25)';
     g.beginPath(); g.ellipse(x + 5, y + 7, rx, ry, 0, 0, TAU); g.fill();
     g.fillStyle = '#3f7fb5';
@@ -354,10 +366,12 @@ function renderTrackCanvas() {
   // buildings
   const BUILD_COLS = ['#c9b8a0', '#b7643f', '#9aa3ab', '#d8cba8'];
   placed = 0;
-  for (let tries = 0; tries < 260 && placed < theme.b; tries++) {
+  for (let tries = 0; tries < 320 && placed < theme.b; tries++) {
     const w = sr(70, 150), h = sr(60, 120);
     const x = sr(80, WORLD_W - 80 - w), y = sr(80, WORLD_H - 80 - h);
     if (roadDist(x + w / 2, y + h / 2) < ROAD_W / 2 + Math.max(w, h) * 0.72 + 50) continue;
+    if (!clearOf(x + w / 2, y + h / 2, Math.max(w, h) * 0.72)) continue;
+    items.push({ x: x + w / 2, y: y + h / 2, rad: Math.max(w, h) * 0.72 });
     g.fillStyle = 'rgba(20,18,22,0.30)';
     g.fillRect(x + 6, y + 8, w, h);
     g.fillStyle = BUILD_COLS[Math.floor(srand() * BUILD_COLS.length)];
@@ -380,10 +394,12 @@ function renderTrackCanvas() {
 
   // trees / bushes
   placed = 0;
-  for (let tries = 0; tries < theme.t * 4 && placed < theme.t; tries++) {
+  for (let tries = 0; tries < theme.t * 5 && placed < theme.t; tries++) {
     const x = sr(60, WORLD_W - 60), y = sr(60, WORLD_H - 60);
     const r = sr(16, 34);
     if (roadDist(x, y) < ROAD_W / 2 + 90) continue;
+    if (!clearOf(x, y, r)) continue;
+    items.push({ x, y, rad: r });
     g.fillStyle = 'rgba(20,18,22,0.30)';
     g.beginPath(); g.ellipse(x + 6, y + 8, r, r * 0.8, 0, 0, TAU); g.fill();
     g.fillStyle = placed % 3 === 0 ? '#2e6b28' : '#3a8032';
