@@ -274,13 +274,13 @@ function cycleTrack(d) {
 // corner: how much curvature slows them (lower = braver in corners)
 // rubber: max rubber-band strength keeping the field close to the player
 // Tuned via headless lap-time simulation on APEX GP so the fastest AI lap
-// lands in: LEGEND 27-28s, PRO 29-30s, ROOKIE 30-32s.
+// lands in: LEGEND 22-23s, PRO 24-25s, ROOKIE 26-28s.
 // bravery: fraction of the physically possible corner speed they use
 // steerMul: AI steering-authority bonus  ·  mistake: bobble chance per window
 const DIFFS = [
-  { id: 'rookie', name: 'ROOKIE', color: '#4e9b3f', skills: [0.88, 0.86, 0.84], bravery: 0.80, steerMul: 1.00, rubber: 0,     mistake: 0.35 },
-  { id: 'pro',    name: 'PRO',    color: '#f5b93a', skills: [0.86, 0.85, 0.84], bravery: 0.88, steerMul: 1.06, rubber: 0.035, mistake: 0.15 },
-  { id: 'legend', name: 'LEGEND', color: '#e8542f', skills: [0.87, 0.86, 0.85], bravery: 0.93, steerMul: 1.12, rubber: 0.055, mistake: 0.04 }
+  { id: 'rookie', name: 'ROOKIE', color: '#4e9b3f', skills: [0.94, 0.92, 0.90], bravery: 0.86, steerMul: 1.08, rubber: 0,     mistake: 0.35 },
+  { id: 'pro',    name: 'PRO',    color: '#f5b93a', skills: [0.97, 0.96, 0.95], bravery: 0.93, steerMul: 1.20, rubber: 0.035, mistake: 0.15 },
+  { id: 'legend', name: 'LEGEND', color: '#e8542f', skills: [1.00, 0.99, 0.98], bravery: 0.98, steerMul: 1.52, rubber: 0.055, mistake: 0.04 }
 ];
 let curDiffIx = 1;
 try {
