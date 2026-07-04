@@ -990,8 +990,8 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
   }
 
   // skid marks + smoke
-  const rlx = car.x - c2 * 12 - (-s2) * 7, rly = car.y - s2 * 12 - c2 * 7;
-  const rrx = car.x - c2 * 12 + (-s2) * 7, rry = car.y - s2 * 12 + c2 * 7;
+  const rlx = car.x - c2 * 12 - (-s2) * 10, rly = car.y - s2 * 12 - c2 * 10;
+  const rrx = car.x - c2 * 12 + (-s2) * 10, rry = car.y - s2 * 12 + c2 * 10;
   if (car.drifting && !car.offTrack) {
     if (car.prevRL) {
       skidCtx.strokeStyle = 'rgba(25,25,28,0.28)';
@@ -1316,49 +1316,76 @@ function drawCar(c) {
   // hard offset comic shadow
   ctx.fillStyle = 'rgba(20,18,22,0.35)';
   ctx.beginPath();
-  ctx.ellipse(3, 5, 19, 12, 0, 0, TAU);
+  ctx.ellipse(3, 5, 18, 12, 0, 0, TAU);
   ctx.fill();
 
+  // axles connecting the exposed wheels
   ctx.fillStyle = '#141216';
-  ctx.fillRect(-14, -11, 9, 4.5);
-  ctx.fillRect(-14, 6.5, 9, 4.5);
-  ctx.fillRect(6, -11, 9, 4.5);
-  ctx.fillRect(6, 6.5, 9, 4.5);
+  ctx.fillRect(-12, -9, 4, 18);
+  ctx.fillRect(9, -8, 3, 16);
 
-  // flat body with bold ink outline
+  // wheels: chunky and exposed, kart-style (rear wider than front)
+  ctx.fillStyle = '#141216';
+  ctx.fillRect(-15, -12.5, 8, 5);
+  ctx.fillRect(-15, 7.5, 8, 5);
+  ctx.fillRect(8, -11.5, 6.5, 4);
+  ctx.fillRect(8, 7.5, 6.5, 4);
+  ctx.fillStyle = '#3a3d42';
+  ctx.fillRect(-13.5, -11.5, 5, 3);
+  ctx.fillRect(-13.5, 8.5, 5, 3);
+  ctx.fillRect(9, -10.5, 4.5, 2);
+  ctx.fillRect(9, 8.5, 4.5, 2);
+
+  // narrow floor tray with side pods
   ctx.fillStyle = c.color;
   ctx.beginPath();
-  ctx.moveTo(17, 0);
-  ctx.lineTo(13, -8);
-  ctx.lineTo(-14, -9);
-  ctx.lineTo(-17, -6);
-  ctx.lineTo(-17, 6);
-  ctx.lineTo(-14, 9);
-  ctx.lineTo(13, 8);
+  ctx.moveTo(16, 0);
+  ctx.lineTo(12, -5);
+  ctx.lineTo(4, -6);
+  ctx.lineTo(-4, -7.5);
+  ctx.lineTo(-16, -6);
+  ctx.lineTo(-16, 6);
+  ctx.lineTo(-4, 7.5);
+  ctx.lineTo(4, 6);
+  ctx.lineTo(12, 5);
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = '#141216';
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 2.2;
   ctx.stroke();
 
-  ctx.fillStyle = '#141216';
-  ctx.beginPath();
-  ctx.moveTo(8, -5);
-  ctx.lineTo(-6, -6);
-  ctx.lineTo(-6, 6);
-  ctx.lineTo(8, 5);
-  ctx.closePath();
-  ctx.fill();
-
+  // front nose wing + rear bumper
   ctx.fillStyle = c.accent;
-  ctx.fillRect(-18, -8, 3, 16);
+  ctx.fillRect(13, -7, 3, 14);
+  ctx.fillRect(-18, -6, 3, 12);
   ctx.strokeStyle = '#141216';
   ctx.lineWidth = 1.5;
-  ctx.strokeRect(-18, -8, 3, 16);
+  ctx.strokeRect(13, -7, 3, 14);
+  ctx.strokeRect(-18, -6, 3, 12);
 
+  // steering wheel
+  ctx.fillStyle = '#141216';
+  ctx.beginPath();
+  ctx.arc(5, 0, 2.6, 0, TAU);
+  ctx.fill();
+
+  // driver helmet with team-color stripe and visor
   ctx.fillStyle = '#f2efe9';
-  ctx.fillRect(14.5, -6.5, 2.5, 3);
-  ctx.fillRect(14.5, 3.5, 2.5, 3);
+  ctx.beginPath();
+  ctx.arc(-2, 0, 4.6, 0, TAU);
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = c.accent;
+  ctx.fillRect(-7, -1.4, 10, 2.8);
+  ctx.fillStyle = '#141216';
+  ctx.fillRect(1, -3.4, 2.2, 6.8);   // visor, facing forward
+  ctx.restore();
+  ctx.strokeStyle = '#141216';
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.arc(-2, 0, 4.6, 0, TAU);
+  ctx.stroke();
 
   ctx.restore();
 }
