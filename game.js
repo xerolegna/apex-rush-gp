@@ -2636,7 +2636,8 @@ function drawMenu() {
   const cw = Math.min(470, VW - 24);
   const ch = compact ? 200 : 254;
   const cx = VW / 2 - cw / 2;
-  const cy = compact ? titleY + 34 : VH * 0.36;
+  // keep the card clear of the subtitle line under the title
+  const cy = compact ? titleY + 34 : Math.max(titleY + 68, VH * 0.36);
   const swY = cy + (compact ? 114 : 132);
   const swGap = Math.min(36, (cw - 56) / KART_COLORS.length);
   const swX0 = VW / 2 - (KART_COLORS.length - 1) * swGap / 2;
