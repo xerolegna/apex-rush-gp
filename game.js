@@ -782,11 +782,18 @@ function applyVolumes() {
   if (musicAudio) musicAudio.volume = muted ? 0 : clamp(0.8 * musicVol, 0, 1);
 }
 
-// ---------- Streamed soundtrack: three tracks cycling when each ends ----------
-// (files in music/; the procedural synth loop stays as automatic fallback
-// anywhere they can't load)
+// ---------- Streamed soundtrack ----------
+// menu.m4a loops on the menus; the three race tracks cycle during races,
+// each starting when the previous one ends. The procedural synth loop
+// stays as automatic fallback anywhere the files can't load.
 const MUSIC_TRACKS = ['music/track1.m4a', 'music/track2.m4a', 'music/track3.m4a'];
-let musicAudio = null, musicTrackIx = 0, streamMusicOk = false;
+const MENU_TRACK = 'music/menu.m4a';
+let musicAudio = null, musicTrackIx = 0, streamMusicOk = false, musicCtx = 'menu';
+
+function musicCtxWanted() {
+  return (state === 'countdown' || state === 'racing' || state === 'finished')
+    ? 'race' : 'menu';
+}
 
 function startStreamMusic() {
   if (musicAudio) return;
@@ -794,15 +801,30 @@ function startStreamMusic() {
   musicAudio.preload = 'auto';
   musicAudio.onplaying = () => { streamMusicOk = true; };
   musicAudio.onended = () => {
+    if (musicCtx !== 'race') return;
     musicTrackIx = (musicTrackIx + 1) % MUSIC_TRACKS.length;
     musicAudio.src = MUSIC_TRACKS[musicTrackIx];
     applyVolumes();
     musicAudio.play().catch(() => {});
   };
   musicAudio.onerror = () => { streamMusicOk = false; };
-  musicAudio.src = MUSIC_TRACKS[musicTrackIx];
+  musicCtx = musicCtxWanted();
+  musicAudio.loop = musicCtx === 'menu';
+  musicAudio.src = musicCtx === 'menu' ? MENU_TRACK : MUSIC_TRACKS[musicTrackIx];
   applyVolumes();
   musicAudio.play().catch(() => { streamMusicOk = false; });
+}
+
+// swap between the menu loop and the race playlist as the state changes
+function updateMusicContext() {
+  if (!musicAudio) return;
+  const want = musicCtxWanted();
+  if (want === musicCtx) return;
+  musicCtx = want;
+  musicAudio.loop = want === 'menu';
+  musicAudio.src = want === 'menu' ? MENU_TRACK : MUSIC_TRACKS[musicTrackIx];
+  applyVolumes();
+  musicAudio.play().catch(() => {});
 }
 
 function initAudio() {
@@ -2723,6 +2745,7 @@ function frame(now) {
   const dt = Math.min((now - lastT) / 1000, 1 / 30);
   lastT = now;
   update(dt);
+  updateMusicContext();
   scheduleMusic();
   draw();
   requestAnimationFrame(frame);
