@@ -864,6 +864,8 @@ function updateMusicContext() {
 }
 
 function initAudio() {
+  // if the browser blocked music autoplay at load, first gesture unblocks it
+  if (musicAudio && musicAudio.paused) musicAudio.play().catch(() => {});
   if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
   try {
     AC = new (window.AudioContext || window.webkitAudioContext)();
@@ -2797,4 +2799,7 @@ if (!isUnlocked(bootIx)) bootIx = 0;
 loadTrack(bootIx);
 startRace();
 state = 'welcome';
+// try to start the menu music right away (browsers that allow autoplay
+// get sound on the loading screen; others start on the first tap/key)
+startStreamMusic();
 requestAnimationFrame(frame);
