@@ -238,26 +238,28 @@ function renderTrackCanvas() {
   };
   const sr = (a, b) => a + srand() * (b - a);
 
-  // grass green ground
-  g.fillStyle = '#57a04b';
+  // grass ground — same endless tile as beyond the world, so the
+  // canvas borders blend invisibly into the infinite background
+  g.fillStyle = g.createPattern(grassTile, 'repeat');
   g.fillRect(0, 0, WORLD_W, WORLD_H);
 
-  // brown dirt patches for that worn-infield look
+  // brown dirt patches for that worn-infield look (kept off the edges)
   for (let i = 0; i < 26; i++) {
     g.fillStyle = srand() < 0.5 ? 'rgba(139,105,58,0.30)' : 'rgba(110,82,44,0.25)';
     const r = sr(90, 260);
     g.beginPath();
-    g.ellipse(sr(0, WORLD_W), sr(0, WORLD_H), r, r * sr(0.4, 0.7), sr(0, TAU), 0, TAU);
+    g.ellipse(sr(r + 40, WORLD_W - r - 40), sr(r + 40, WORLD_H - r - 40),
+      r, r * sr(0.4, 0.7), sr(0, TAU), 0, TAU);
     g.fill();
   }
 
-  // grass mottling
+  // grass mottling (kept off the edges)
   for (let i = 0; i < 900; i++) {
     g.fillStyle = srand() < 0.5
       ? 'rgba(255,255,255,0.05)' : 'rgba(25,60,20,0.08)';
     const r = sr(18, 80);
     g.beginPath();
-    g.ellipse(sr(0, WORLD_W), sr(0, WORLD_H), r, r * 0.6, sr(0, TAU), 0, TAU);
+    g.ellipse(sr(90, WORLD_W - 90), sr(90, WORLD_H - 90), r, r * 0.6, sr(0, TAU), 0, TAU);
     g.fill();
   }
 
@@ -347,7 +349,7 @@ function renderTrackCanvas() {
   let placed = 0;
   for (let tries = 0; tries < 120 && placed < theme.p; tries++) {
     const rx = sr(70, 150), ry = rx * sr(0.55, 0.8);
-    const x = sr(140, WORLD_W - 140), y = sr(140, WORLD_H - 140);
+    const x = sr(rx + 40, WORLD_W - rx - 40), y = sr(ry + 40, WORLD_H - ry - 40);
     if (roadDist(x, y) < ROAD_W / 2 + rx + 44) continue;
     if (!clearOf(x, y, rx)) continue;
     items.push({ x, y, rad: rx });
@@ -395,7 +397,7 @@ function renderTrackCanvas() {
   // trees / bushes
   placed = 0;
   for (let tries = 0; tries < theme.t * 5 && placed < theme.t; tries++) {
-    const x = sr(60, WORLD_W - 60), y = sr(60, WORLD_H - 60);
+    const x = sr(100, WORLD_W - 100), y = sr(100, WORLD_H - 100);
     const r = sr(16, 34);
     if (roadDist(x, y) < ROAD_W / 2 + 90) continue;
     if (!clearOf(x, y, r)) continue;
@@ -815,10 +817,23 @@ function startStreamMusic() {
   musicAudio.play().catch(() => { streamMusicOk = false; });
 }
 
-// swap between the menu loop and the race playlist as the state changes
+// swap between the menu loop and the race playlist as the state changes;
+// every new race start advances to the next song in the rotation
+let musicPrevState = '';
 function updateMusicContext() {
   if (!musicAudio) return;
+  const enteringRace = state === 'countdown' && musicPrevState !== 'countdown';
+  musicPrevState = state;
   const want = musicCtxWanted();
+  if (enteringRace) {
+    musicTrackIx = (musicTrackIx + 1) % MUSIC_TRACKS.length;
+    musicCtx = 'race';
+    musicAudio.loop = false;
+    musicAudio.src = MUSIC_TRACKS[musicTrackIx];
+    applyVolumes();
+    musicAudio.play().catch(() => {});
+    return;
+  }
   if (want === musicCtx) return;
   musicCtx = want;
   musicAudio.loop = want === 'menu';
