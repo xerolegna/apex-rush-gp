@@ -478,6 +478,13 @@ function unlockedCount() {
 }
 function isUnlocked(ix) { return ix < unlockedCount(); }
 
+// champion: at least one race win on every single track
+function isChampion() {
+  const w = getWins();
+  return TRACKS.every(t => (w[t.id] || 0) >= 1);
+}
+let championNow = false;   // this very race completed the set
+
 // swap the whole world over to another circuit
 function loadTrack(ix) {
   curTrackIx = ix;
@@ -1346,6 +1353,7 @@ function startRace() {
   newLapRecord = false;
   newRaceRecord = false;
   unlockMsg = null;
+  championNow = false;
 }
 
 function nextUnlockedTrack() {
@@ -1501,6 +1509,14 @@ function stepCar(car, dt, throttle, brake, steerInput, handbrake) {
               if (unlockedCount() > before && before < TRACKS.length) {
                 unlockMsg = TRACKS[before].name;
                 beep(1040, 0.5, 0.25);
+              }
+              // won on every track for the first time -> champion!
+              let champSeen = false;
+              try { champSeen = localStorage.getItem('apexgp_champion') === '1'; } catch (e) {}
+              if (!champSeen && isChampion()) {
+                championNow = true;
+                try { localStorage.setItem('apexgp_champion', '1'); } catch (e) {}
+                beep(1240, 0.7, 0.3);
               }
             }
           } else if (gameMode === 'race' && car.lap === TOTAL_LAPS - 1) {
@@ -2608,9 +2624,12 @@ function drawMenu() {
   ctx.fillText('APEX RUSH GP', VW / 2, titleY);
 
   if (!compact) {
-    ctx.font = '600 20px Segoe UI, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.fillText('3 laps  ·  3 circuits  ·  local track records', VW / 2, titleY + 44);
+    const champ = isChampion();
+    ctx.font = (champ ? '800' : '600') + ' 20px Segoe UI, sans-serif';
+    ctx.fillStyle = champ ? '#f5b93a' : 'rgba(255,255,255,0.9)';
+    ctx.fillText(champ
+      ? '🏆  APEX RUSH CHAMPION  🏆'
+      : '13 circuits  ·  win races to unlock them all', VW / 2, titleY + 44);
   }
 
   // ---- track + difficulty + colour selector card ----
@@ -2711,19 +2730,51 @@ function drawResults() {
   const order = standings();
   const rank = order.indexOf(player);
   ctx.textAlign = 'center';
-  ctx.font = '900 72px Segoe UI, sans-serif';
-  ctx.fillStyle = '#141216';
-  ctx.fillText('FINISH!', VW / 2 + 5, VH * 0.24 + 5);
-  ctx.strokeStyle = '#141216';
-  ctx.lineWidth = 10;
-  ctx.lineJoin = 'round';
-  ctx.strokeText('FINISH!', VW / 2, VH * 0.24);
-  ctx.fillStyle = rank === 0 ? '#f5b93a' : '#f2efe9';
-  ctx.fillText('FINISH!', VW / 2, VH * 0.24);
 
-  ctx.font = '800 34px Segoe UI, sans-serif';
-  ctx.fillStyle = rank === 0 ? '#8fe08a' : '#f5b93a';
-  ctx.fillText(rank === 0 ? 'YOU WIN — ' + ORDINAL[rank] + ' PLACE' : ORDINAL[rank] + ' PLACE', VW / 2, VH * 0.24 + 56);
+  if (championNow) {
+    // confetti rain behind the champion banner
+    const tNow = performance.now() / 1000;
+    const CONF = ['#e8542f', '#f5b93a', '#4e9b3f', '#22a7d9', '#6f2da8', '#e668b5'];
+    for (let i = 0; i < 140; i++) {
+      const xx = ((i * 761) % 997) / 997 * VW;
+      const spd2 = 60 + (i % 7) * 24;
+      const yy = ((i * 373) % 611 + tNow * spd2) % (VH + 40) - 20;
+      ctx.fillStyle = CONF[i % 6];
+      ctx.save();
+      ctx.translate(xx, yy);
+      ctx.rotate(tNow * 2 + i);
+      ctx.fillRect(-4, -2.5, 8, 5);
+      ctx.restore();
+    }
+    const cs = Math.round(Math.min(56, VW * 0.07));
+    ctx.lineJoin = 'round';
+    ctx.font = Math.round(cs * 1.4) + 'px Segoe UI, sans-serif';
+    ctx.fillText('🏆', VW / 2, VH * 0.13);
+    ctx.font = '900 ' + cs + 'px Segoe UI, sans-serif';
+    ctx.strokeStyle = '#141216';
+    ctx.lineWidth = Math.max(6, cs * 0.16);
+    ctx.strokeText('CONGRATULATIONS!!', VW / 2, VH * 0.22);
+    ctx.fillStyle = '#f2efe9';
+    ctx.fillText('CONGRATULATIONS!!', VW / 2, VH * 0.22);
+    ctx.font = '900 ' + Math.round(cs * 0.62) + 'px Segoe UI, sans-serif';
+    ctx.strokeText('YOU ARE THE APEX RUSH CHAMPION!!', VW / 2, VH * 0.22 + cs * 1.05);
+    ctx.fillStyle = '#f5b93a';
+    ctx.fillText('YOU ARE THE APEX RUSH CHAMPION!!', VW / 2, VH * 0.22 + cs * 1.05);
+  } else {
+    ctx.font = '900 72px Segoe UI, sans-serif';
+    ctx.fillStyle = '#141216';
+    ctx.fillText('FINISH!', VW / 2 + 5, VH * 0.24 + 5);
+    ctx.strokeStyle = '#141216';
+    ctx.lineWidth = 10;
+    ctx.lineJoin = 'round';
+    ctx.strokeText('FINISH!', VW / 2, VH * 0.24);
+    ctx.fillStyle = rank === 0 ? '#f5b93a' : '#f2efe9';
+    ctx.fillText('FINISH!', VW / 2, VH * 0.24);
+
+    ctx.font = '800 34px Segoe UI, sans-serif';
+    ctx.fillStyle = rank === 0 ? '#8fe08a' : '#f5b93a';
+    ctx.fillText(rank === 0 ? 'YOU WIN — ' + ORDINAL[rank] + ' PLACE' : ORDINAL[rank] + ' PLACE', VW / 2, VH * 0.24 + 56);
+  }
 
   ctx.font = '500 20px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
