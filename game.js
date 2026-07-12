@@ -238,30 +238,10 @@ function renderTrackCanvas() {
   };
   const sr = (a, b) => a + srand() * (b - a);
 
-  // grass ground — same endless tile as beyond the world, so the
-  // canvas borders blend invisibly into the infinite background
+  // grass ground: the same endless tile as beyond the world carries the
+  // whole design (dirt + mottling), so all four borders are invisible
   g.fillStyle = g.createPattern(grassTile, 'repeat');
   g.fillRect(0, 0, WORLD_W, WORLD_H);
-
-  // brown dirt patches for that worn-infield look (kept off the edges)
-  for (let i = 0; i < 26; i++) {
-    g.fillStyle = srand() < 0.5 ? 'rgba(139,105,58,0.30)' : 'rgba(110,82,44,0.25)';
-    const r = sr(90, 260);
-    g.beginPath();
-    g.ellipse(sr(r + 40, WORLD_W - r - 40), sr(r + 40, WORLD_H - r - 40),
-      r, r * sr(0.4, 0.7), sr(0, TAU), 0, TAU);
-    g.fill();
-  }
-
-  // grass mottling (kept off the edges)
-  for (let i = 0; i < 900; i++) {
-    g.fillStyle = srand() < 0.5
-      ? 'rgba(255,255,255,0.05)' : 'rgba(25,60,20,0.08)';
-    const r = sr(18, 80);
-    g.beginPath();
-    g.ellipse(sr(90, WORLD_W - 90), sr(90, WORLD_H - 90), r, r * 0.6, sr(0, TAU), 0, TAU);
-    g.fill();
-  }
 
   const path = new Path2D();
   path.moveTo(SAMPLES[0].x, SAMPLES[0].y);
@@ -570,18 +550,55 @@ function setKartColor(i) {
   state = 'menu';
 }
 
-// ---------- Endless grass tile (fills the world beyond the track canvas) ----------
+// ---------- Endless grass tile ----------
+// Carries the whole ground design (dirt smudges + mottling + noise),
+// drawn wrap-around so it tiles seamlessly — the same design continues
+// across all four world borders and beyond, forever.
 const grassTile = document.createElement('canvas');
-grassTile.width = 256;
-grassTile.height = 256;
+grassTile.width = 1024;
+grassTile.height = 1024;
 (function renderGrassTile() {
+  const S = 1024;
   const g = grassTile.getContext('2d');
   g.fillStyle = '#57a04b';
-  g.fillRect(0, 0, 256, 256);
-  // per-pixel noise tiles seamlessly and reads as grass from above
-  const img = g.getImageData(0, 0, 256, 256);
+  g.fillRect(0, 0, S, S);
+  let seed = 77;
+  const tr = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  // draw each blob 9 times so shapes crossing an edge wrap to the other side
+  const wrap = (x, y, fn) => {
+    for (const dx of [-S, 0, S])
+      for (const dy of [-S, 0, S])
+        fn(x + dx, y + dy);
+  };
+  // large brown dirt smudges
+  for (let i = 0; i < 5; i++) {
+    const x = tr() * S, y = tr() * S;
+    const r = 90 + tr() * 130, ry = r * (0.4 + tr() * 0.3), a = tr() * TAU;
+    g.fillStyle = tr() < 0.5 ? 'rgba(139,105,58,0.28)' : 'rgba(110,82,44,0.22)';
+    wrap(x, y, (px, py) => {
+      g.beginPath();
+      g.ellipse(px, py, r, ry, a, 0, TAU);
+      g.fill();
+    });
+  }
+  // grass mottling
+  for (let i = 0; i < 150; i++) {
+    const x = tr() * S, y = tr() * S;
+    const r = 18 + tr() * 62, a = tr() * TAU;
+    g.fillStyle = tr() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(25,60,20,0.08)';
+    wrap(x, y, (px, py) => {
+      g.beginPath();
+      g.ellipse(px, py, r, r * 0.6, a, 0, TAU);
+      g.fill();
+    });
+  }
+  // fine per-pixel noise (tiles by nature)
+  const img = g.getImageData(0, 0, S, S);
   for (let i = 0; i < img.data.length; i += 4) {
-    const n = (Math.random() - 0.5) * 16;
+    const n = (Math.random() - 0.5) * 12;
     img.data[i] += n;
     img.data[i + 1] += n;
     img.data[i + 2] += n;
