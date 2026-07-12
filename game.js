@@ -2611,7 +2611,7 @@ function drawMenu() {
 
   const compact = VW < 760 || VH < 560;
   const titleSize = Math.round(Math.min(84, VW * 0.115));
-  const titleY = compact ? Math.max(60, VH * 0.14) : VH * 0.32;
+  const titleY = compact ? Math.max(60, VH * 0.14) : Math.max(110, VH * 0.24);
 
   ctx.font = '900 ' + titleSize + 'px Segoe UI, sans-serif';
   ctx.fillStyle = '#141216';
@@ -2636,8 +2636,8 @@ function drawMenu() {
   const cw = Math.min(470, VW - 24);
   const ch = compact ? 200 : 254;
   const cx = VW / 2 - cw / 2;
-  // keep the card clear of the subtitle line under the title
-  const cy = compact ? titleY + 34 : Math.max(titleY + 68, VH * 0.36);
+  // hard-anchored below the subtitle line so it can never cover it
+  const cy = compact ? titleY + 34 : titleY + 76;
   const swY = cy + (compact ? 114 : 132);
   const swGap = Math.min(36, (cw - 56) / KART_COLORS.length);
   const swX0 = VW / 2 - (KART_COLORS.length - 1) * swGap / 2;
