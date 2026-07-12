@@ -779,6 +779,30 @@ function saveVol() {
 function applyVolumes() {
   if (musicGain) musicGain.gain.value = 0.24 * musicVol;
   if (sfxGain) sfxGain.gain.value = sfxVol;
+  if (musicAudio) musicAudio.volume = muted ? 0 : clamp(0.8 * musicVol, 0, 1);
+}
+
+// ---------- Streamed soundtrack: three tracks cycling when each ends ----------
+// (files in music/; the procedural synth loop stays as automatic fallback
+// anywhere they can't load)
+const MUSIC_TRACKS = ['music/track1.m4a', 'music/track2.m4a', 'music/track3.m4a'];
+let musicAudio = null, musicTrackIx = 0, streamMusicOk = false;
+
+function startStreamMusic() {
+  if (musicAudio) return;
+  musicAudio = new Audio();
+  musicAudio.preload = 'auto';
+  musicAudio.onplaying = () => { streamMusicOk = true; };
+  musicAudio.onended = () => {
+    musicTrackIx = (musicTrackIx + 1) % MUSIC_TRACKS.length;
+    musicAudio.src = MUSIC_TRACKS[musicTrackIx];
+    applyVolumes();
+    musicAudio.play().catch(() => {});
+  };
+  musicAudio.onerror = () => { streamMusicOk = false; };
+  musicAudio.src = MUSIC_TRACKS[musicTrackIx];
+  applyVolumes();
+  musicAudio.play().catch(() => { streamMusicOk = false; });
 }
 
 function initAudio() {
@@ -841,6 +865,7 @@ function initAudio() {
   fb.connect(musicDelay);
   musicDelay.connect(musicGain);
   applyVolumes();
+  startStreamMusic();
 }
 
 // ---------- Procedural background music (original, no samples) ----------
@@ -915,6 +940,7 @@ function mArp(t, m, dur) {
 }
 
 function scheduleMusic() {
+  if (streamMusicOk) return;   // real soundtrack is playing
   if (!AC || !musicGain || AC.state !== 'running') return;
   const stepDur = 60 / MUSIC_BPM / 4;
   if (musicTime < AC.currentTime) musicTime = AC.currentTime + 0.05;
@@ -942,6 +968,7 @@ function scheduleMusic() {
 function toggleMute() {
   muted = !muted;
   if (masterGain) masterGain.gain.value = muted ? 0 : 0.6;
+  applyVolumes();
 }
 function beep(freq, dur, vol) {
   if (!AC || muted) return;
