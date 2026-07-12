@@ -1288,6 +1288,12 @@ function startRace() {
   unlockMsg = null;
 }
 
+function nextUnlockedTrack() {
+  let ix = curTrackIx;
+  do { ix = (ix + 1) % TRACKS.length; } while (!isUnlocked(ix));
+  return ix;
+}
+
 function onEnter() {
   if (state === 'tracks') {
     if (isUnlocked(trackSel)) {
@@ -1299,7 +1305,13 @@ function onEnter() {
     }
     return;
   }
-  if (state === 'menu' || state === 'finished') startRace();
+  if (state === 'finished') {
+    // move on to the next unlocked circuit for the next race
+    loadTrack(nextUnlockedTrack());
+    startRace();
+    return;
+  }
+  if (state === 'menu') startRace();
 }
 
 // ---------- Physics ----------
@@ -2683,12 +2695,13 @@ function drawResults() {
   });
 
   const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 300);
+  const nextName = TRACKS[nextUnlockedTrack()].name;
   ctx.font = '800 24px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,217,77,' + pulse.toFixed(2) + ')';
-  ctx.fillText(IS_TOUCH ? 'TAP  TO  RACE  AGAIN' : 'PRESS  ENTER  TO  RACE  AGAIN', VW / 2, VH * 0.78);
+  ctx.fillText((IS_TOUCH ? 'TAP  —  NEXT:  ' : 'ENTER  —  NEXT:  ') + nextName, VW / 2, VH * 0.78);
   ctx.font = '600 15px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.fillText(IS_TOUCH ? 'tap here to choose another track' : 'ESC — choose another track', VW / 2, VH * 0.78 + 30);
+  ctx.fillText(IS_TOUCH ? 'tap here to choose another track' : 'R — same track again        ESC — track select', VW / 2, VH * 0.78 + 30);
 }
 
 // roundRect fallback for older browsers
