@@ -568,6 +568,26 @@ function setKartColor(i) {
   state = 'menu';
 }
 
+// ---------- Endless grass tile (fills the world beyond the track canvas) ----------
+const grassTile = document.createElement('canvas');
+grassTile.width = 256;
+grassTile.height = 256;
+(function renderGrassTile() {
+  const g = grassTile.getContext('2d');
+  g.fillStyle = '#57a04b';
+  g.fillRect(0, 0, 256, 256);
+  // per-pixel noise tiles seamlessly and reads as grass from above
+  const img = g.getImageData(0, 0, 256, 256);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 16;
+    img.data[i] += n;
+    img.data[i + 1] += n;
+    img.data[i + 2] += n;
+  }
+  g.putImageData(img, 0, 0);
+})();
+let grassPattern = null;
+
 // ---------- Print-grain overlay (static, like risograph paper) ----------
 const grainCanvas = document.createElement('canvas');
 grainCanvas.width = 160;
@@ -1831,6 +1851,12 @@ function draw() {
   ctx.translate(-camX, -camY);
 
   const viewW = VW / camZoom, viewH = VH / camZoom;
+
+  // endless grass beyond the world edges (fixed to world coordinates)
+  if (!grassPattern) grassPattern = ctx.createPattern(grassTile, 'repeat');
+  ctx.fillStyle = grassPattern;
+  ctx.fillRect(camX - viewW / 2 - 8, camY - viewH / 2 - 8, viewW + 16, viewH + 16);
+
   let sx = camX - viewW / 2 - 4, sy = camY - viewH / 2 - 4;
   let sw = viewW + 8, sh = viewH + 8;
   sx = clamp(sx, 0, WORLD_W); sy = clamp(sy, 0, WORLD_H);
