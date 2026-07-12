@@ -821,7 +821,7 @@ const MUSIC_TRACKS = [
   'music/pixel-redline.mp3',
   'music/handheld-grand-prix.mp3'
 ];
-const MENU_TRACK = 'music/menu.m4a';
+const MENU_TRACK = 'music/circuit-breaker.mp3';
 let musicAudio = null, musicTrackIx = 0, streamMusicOk = false, musicCtx = 'menu';
 
 function musicCtxWanted() {
