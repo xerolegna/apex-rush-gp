@@ -781,7 +781,11 @@ function saveVol() {
 function applyVolumes() {
   if (musicGain) musicGain.gain.value = 0.24 * musicVol;
   if (sfxGain) sfxGain.gain.value = sfxVol;
-  if (musicAudio) musicAudio.volume = muted ? 0 : clamp(0.8 * musicVol, 0, 1);
+  // in-race music sits well under the engine; menu music plays at full level
+  if (musicAudio) {
+    const duck = musicCtx === 'race' ? 0.2 : 1;
+    musicAudio.volume = muted ? 0 : clamp(0.8 * musicVol * duck, 0, 1);
+  }
 }
 
 // ---------- Streamed soundtrack ----------
@@ -1824,7 +1828,7 @@ function update(dt) {
     engineOsc.frequency.value = freq;
     engineOsc2.frequency.value = freq * 0.502;
     engineFilter.frequency.value = 280 + rpmF * 900;
-    const tgtGain = state === 'racing' ? 0.04 + rpmF * 0.03 : 0.018;
+    const tgtGain = state === 'racing' ? 0.048 + rpmF * 0.036 : 0.018;
     engineGain.gain.value = lerp(engineGain.gain.value, tgtGain, 0.15);
     const skidTgt = (player.drifting && state === 'racing') ? 0.09 : 0;
     skidGain.gain.value = lerp(skidGain.gain.value, skidTgt, 0.2);
