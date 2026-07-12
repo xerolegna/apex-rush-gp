@@ -816,7 +816,7 @@ function applyVolumes() {
 // menu.m4a loops on the menus; the three race tracks cycle during races,
 // each starting when the previous one ends. The procedural synth loop
 // stays as automatic fallback anywhere the files can't load.
-const MUSIC_TRACKS = ['music/track1.m4a', 'music/track2.m4a', 'music/track3.m4a'];
+const MUSIC_TRACKS = ['music/race1.m4a', 'music/race2.m4a', 'music/race3.m4a'];
 const MENU_TRACK = 'music/menu.m4a';
 let musicAudio = null, musicTrackIx = 0, streamMusicOk = false, musicCtx = 'menu';
 
